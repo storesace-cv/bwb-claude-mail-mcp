@@ -1,0 +1,47 @@
+[Unit]
+Description=mcp-oauth-shim-mail — OAuth 2.1 + admin for claude-mail-mcp
+After=network.target claude-mail-mcp.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=mailmcp
+Group=mailmcp
+WorkingDirectory=/var/www/mcp-mail-shim
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --env-file=/var/www/mcp-mail-shim/.env --enable-source-maps /var/www/mcp-mail-shim/dist/index.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+ReadWritePaths=/var/lib/mail-mcp
+MemoryMax=512M
+TasksMax=128
+LimitNOFILE=4096
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32
+IPAddressAllow=::1/128
+
+[Install]
+WantedBy=multi-user.target

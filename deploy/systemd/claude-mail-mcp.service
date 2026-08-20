@@ -1,0 +1,44 @@
+[Unit]
+Description=claude-mail-mcp — IMAP/SMTP/CalDAV MCP backend
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=mailmcp
+Group=mailmcp
+WorkingDirectory=/var/www/mail-mcp
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --env-file=/var/www/mail-mcp/.env --enable-source-maps /var/www/mail-mcp/dist/index.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+ReadWritePaths=/var/lib/mail-mcp
+MemoryMax=512M
+TasksMax=128
+LimitNOFILE=4096
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
