@@ -14,8 +14,8 @@ Environment=HOME=/var/lib/whatsapp-mcp
 ExecStart=/var/www/whatsapp-mcp/bin/whatsapp-bridge
 Restart=on-failure
 RestartSec=5
-StandardOutput=journal
-StandardError=journal
+StandardOutput=append:/var/log/whatsapp-mcp/bridge-a.log
+StandardError=append:/var/log/whatsapp-mcp/bridge-a.log
 
 NoNewPrivileges=true
 ProtectSystem=strict

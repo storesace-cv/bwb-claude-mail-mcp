@@ -19,6 +19,12 @@ import { testMailConnections } from "../store/mail-test.js";
 import { getAllWhatsappStatuses } from "../store/whatsapp-status.js";
 import type { WhatsappAccountStatus } from "../store/whatsapp-status.js";
 import {
+  readWhatsappAccountLogs,
+  repairWhatsappAccount,
+  updateWhatsappAccountLabel,
+} from "../store/wa-ops.js";
+import { getWhatsappAccount } from "../store/wa-accounts.js";
+import {
   checkCsrf,
   clearSessionCookie,
   requireAdminSession,
@@ -114,6 +120,7 @@ adminRouter.post("/change-password", requireAdminSession, async (req, res) => {
 
 adminRouter.get("/", requireAdminSession, async (req, res) => {
   const flash = typeof req.query.ok === "string" ? req.query.ok : undefined;
+  const errFlash = typeof req.query.err === "string" ? req.query.err : undefined;
 
   if (config.isWhatsapp) {
     const statuses = await getAllWhatsappStatuses();
@@ -133,9 +140,10 @@ adminRouter.get("/", requireAdminSession, async (req, res) => {
           ${cards}
         </div>
         <p class="muted" style="margin-top:1.5rem">URL público: <span class="mono">${esc(config.publicUrl)}</span>
-          · Alias legado <span class="mono">/mcp</span> → conta <span class="mono">a</span> (Pessoal)</p>
-        ${needsRefresh ? `<script>setTimeout(function(){ location.reload(); }, 5000);</script>` : ""}`,
-        { flash }
+          · Alias legado <span class="mono">/mcp</span> → conta <span class="mono">a</span></p>
+        ${needsRefresh ? `<script>setTimeout(function(){ location.reload(); }, 5000);</script>` : ""}
+        ${waAdminScript()}`,
+        { flash, error: errFlash }
       )
     );
     return;
@@ -173,6 +181,53 @@ adminRouter.get("/", requireAdminSession, async (req, res) => {
   );
 });
 
+function waAdminScript(): string {
+  return `<script>
+(function(){
+  function csrfHeaders() {
+    return { "Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded" };
+  }
+  document.querySelectorAll("[data-wa-logs]").forEach(function(btn){
+    btn.addEventListener("click", async function(){
+      var id = btn.getAttribute("data-wa-logs");
+      var panel = document.getElementById("logs-" + id);
+      var pre = panel && panel.querySelector("pre");
+      if (!panel || !pre) return;
+      panel.hidden = false;
+      pre.textContent = "A carregar…";
+      try {
+        var res = await fetch("/admin/wa/" + encodeURIComponent(id) + "/logs", { credentials: "same-origin", headers: { "Accept": "application/json" } });
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        pre.textContent = data.text || "(vazio)";
+        pre.dataset.source = data.source || "";
+      } catch (e) {
+        pre.textContent = e && e.message ? e.message : String(e);
+      }
+    });
+  });
+  document.querySelectorAll("[data-wa-copy]").forEach(function(btn){
+    btn.addEventListener("click", async function(){
+      var id = btn.getAttribute("data-wa-copy");
+      var pre = document.querySelector("#logs-" + id + " pre");
+      if (!pre) return;
+      try {
+        await navigator.clipboard.writeText(pre.textContent || "");
+        btn.textContent = "Copiado";
+        setTimeout(function(){ btn.textContent = "Copiar"; }, 1500);
+      } catch (_) {}
+    });
+  });
+  document.querySelectorAll("[data-wa-download]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var id = btn.getAttribute("data-wa-download");
+      window.location.href = "/admin/wa/" + encodeURIComponent(id) + "/logs.txt";
+    });
+  });
+})();
+</script>`;
+}
+
 function renderWhatsappCard(
   status: WhatsappAccountStatus,
   mark: (ok: boolean) => string
@@ -187,34 +242,44 @@ function renderWhatsappCard(
 
   let pairingBody: string;
   if (status.pairingState === "paired") {
-    pairingBody = `<p>${pairBadge} Sessão activa.</p>
-      <p class="muted">Re-pair: apaga <span class="mono">${esc(a.storeDir)}/whatsapp.db</span> e
-      <span class="mono">systemctl restart ${esc(a.bridgeUnit)}</span> (backup antes).</p>`;
+    pairingBody = `<p>${pairBadge} Sessão activa.</p>`;
   } else if (status.qrDataUrl) {
-    pairingBody = `<p>${pairBadge} Escaneia o QR: WhatsApp → Definições → Dispositivos ligados → Ligar dispositivo.</p>
+    pairingBody = `<p>${pairBadge} Escaneia o QR no telemóvel: WhatsApp → Definições → Dispositivos ligados → Ligar dispositivo.</p>
       <div style="display:flex;justify-content:center;padding:1rem 0">
         <img src="${status.qrDataUrl}" width="280" height="280" alt="QR ${esc(a.label)}"
           style="border-radius:12px;background:#fff;padding:8px;box-shadow:var(--shadow)" />
       </div>
       <p class="muted">Actualização automática a cada 5s.</p>`;
   } else {
-    pairingBody = `<p>${pairBadge} Ainda sem QR — a bridge pode estar a arrancar.</p>
-      <p class="muted">Se demorar: <span class="mono">journalctl -u ${esc(a.bridgeUnit)} -f</span></p>`;
+    pairingBody = `<p>${pairBadge} Ainda sem QR — a bridge pode estar a arrancar ou a renovar o código.</p>
+      <p class="muted">Usa «Ver logs» abaixo se isto persistir.</p>`;
   }
 
-  return `<div class="panel stack">
-    <h2>${esc(a.label)} <span class="muted mono" style="font-weight:400;font-size:0.875rem">(${esc(a.id)})</span></h2>
+  const bridgeOk = status.bridge.ok || status.pairingState === "awaiting_qr";
+  const bridgeDetail =
+    status.pairingState === "awaiting_qr" && !status.bridge.ok
+      ? "À espera de pair (API sobe depois do scan)"
+      : status.bridge.detail;
+
+  return `<div class="panel stack" id="wa-card-${esc(a.id)}">
+    <form class="stack" method="post" action="/admin/wa/${encodeURIComponent(a.id)}/label" style="gap:0.5rem">
+      <div class="row" style="align-items:end">
+        <label style="flex:1">Nome da conta
+          <input name="label" required maxlength="64" value="${esc(a.label)}" />
+        </label>
+        <div class="actions" style="margin:0">
+          <button type="submit" class="secondary">Guardar nome</button>
+        </div>
+      </div>
+      <p class="muted" style="margin:0;font-size:0.8125rem">ID interno: <span class="mono">${esc(a.id)}</span></p>
+    </form>
     <table>
       <thead><tr><th>Componente</th><th>Estado</th><th>Detalhe</th></tr></thead>
       <tbody>
         <tr>
           <td>Bridge</td>
-          <td>${mark(status.bridge.ok || status.pairingState === "awaiting_qr")}</td>
-          <td class="mono muted">${esc(
-            status.pairingState === "awaiting_qr" && !status.bridge.ok
-              ? "À espera de pair (API sobe depois do scan)"
-              : status.bridge.detail
-          )}</td>
+          <td>${mark(bridgeOk)}</td>
+          <td class="mono muted">${esc(bridgeDetail)}</td>
         </tr>
         <tr>
           <td>MCP Python</td>
@@ -230,8 +295,86 @@ function renderWhatsappCard(
     </table>
     ${pairingBody}
     <p class="muted">Claude connector: <span class="mono">${esc(status.publicMcpUrl)}</span></p>
+    <div class="actions">
+      <form method="post" action="/admin/wa/${encodeURIComponent(a.id)}/repair"
+        onsubmit="return confirm('Isto desliga a sessão WhatsApp actual desta conta e mostra um QR novo. Continuar?')">
+        <button type="submit" class="danger">Re-associar (novo QR)</button>
+      </form>
+      <button type="button" class="secondary" data-wa-logs="${esc(a.id)}">Ver logs</button>
+    </div>
+    <div id="logs-${esc(a.id)}" hidden class="stack" style="margin-top:0.5rem">
+      <div class="actions">
+        <button type="button" class="secondary" data-wa-copy="${esc(a.id)}">Copiar</button>
+        <button type="button" class="secondary" data-wa-download="${esc(a.id)}">Descarregar</button>
+      </div>
+      <pre class="mono" style="white-space:pre-wrap;max-height:280px;overflow:auto;background:var(--fill);padding:0.85rem;border-radius:10px;font-size:0.75rem;margin:0"></pre>
+    </div>
   </div>`;
 }
+
+adminRouter.post("/wa/:id/label", requireAdminSession, async (req, res) => {
+  if (!config.isWhatsapp) {
+    res.status(404).send("Not found");
+    return;
+  }
+  if (!checkCsrf(req)) {
+    res.status(403).send("CSRF");
+    return;
+  }
+  try {
+    const acc = await updateWhatsappAccountLabel(req.params.id, String(req.body.label ?? ""));
+    res.redirect(`/admin?ok=${encodeURIComponent("Nome actualizado: " + acc.label)}`);
+  } catch (err) {
+    res.redirect(`/admin?err=${encodeURIComponent(err instanceof Error ? err.message : String(err))}`);
+  }
+});
+
+adminRouter.post("/wa/:id/repair", requireAdminSession, async (req, res) => {
+  if (!config.isWhatsapp) {
+    res.status(404).send("Not found");
+    return;
+  }
+  if (!checkCsrf(req)) {
+    res.status(403).send("CSRF");
+    return;
+  }
+  try {
+    const result = await repairWhatsappAccount(req.params.id);
+    res.redirect(`/admin?ok=${encodeURIComponent(result.message)}`);
+  } catch (err) {
+    res.redirect(`/admin?err=${encodeURIComponent(err instanceof Error ? err.message : String(err))}`);
+  }
+});
+
+adminRouter.get("/wa/:id/logs", requireAdminSession, async (req, res) => {
+  if (!config.isWhatsapp) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  try {
+    const logs = await readWhatsappAccountLogs(req.params.id);
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+adminRouter.get("/wa/:id/logs.txt", requireAdminSession, async (req, res) => {
+  if (!config.isWhatsapp) {
+    res.status(404).send("Not found");
+    return;
+  }
+  try {
+    const acc = await getWhatsappAccount(req.params.id);
+    const logs = await readWhatsappAccountLogs(req.params.id, 500);
+    const name = `whatsapp-${acc?.id ?? req.params.id}-bridge.log`;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+    res.send(`# source: ${logs.source}\n\n${logs.text}\n`);
+  } catch (err) {
+    res.status(500).type("text").send(err instanceof Error ? err.message : String(err));
+  }
+});
 
 function requireMailMode(_req: Request, res: Response, next: NextFunction): void {
   if (config.isWhatsapp) {

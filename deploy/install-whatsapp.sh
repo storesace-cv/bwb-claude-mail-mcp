@@ -147,6 +147,12 @@ cp "$REPO_ROOT/deploy/systemd/mcp-oauth-shim-whatsapp.service" /etc/systemd/syst
 systemctl daemon-reload
 systemctl enable whatsapp-bridge-a whatsapp-bridge-b whatsapp-mcp-a whatsapp-mcp-b mcp-oauth-shim-whatsapp
 
+echo "==> sudoers for admin re-pair / logs"
+install -m 440 "$REPO_ROOT/deploy/sudoers/whatsappmcp-admin" /etc/sudoers.d/whatsappmcp-admin
+visudo -cf /etc/sudoers.d/whatsappmcp-admin
+touch /var/log/whatsapp-mcp/bridge-a.log /var/log/whatsapp-mcp/bridge-b.log
+chown whatsappmcp:whatsappmcp /var/log/whatsapp-mcp/bridge-a.log /var/log/whatsapp-mcp/bridge-b.log
+
 systemctl restart whatsapp-bridge-a
 sleep 2
 sync_bridge_token a

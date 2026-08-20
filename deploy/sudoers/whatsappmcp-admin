@@ -1,0 +1,4 @@
+# Allow WhatsApp admin shim (user whatsappmcp) limited privileged ops.
+Cmnd_Alias WA_RESTART = /bin/systemctl restart whatsapp-bridge-a, /bin/systemctl restart whatsapp-bridge-b, /bin/systemctl restart whatsapp-mcp-a, /bin/systemctl restart whatsapp-mcp-b
+Cmnd_Alias WA_LOGS = /usr/bin/journalctl -u whatsapp-bridge-a -n 200 --no-pager -o short-iso, /usr/bin/journalctl -u whatsapp-bridge-b -n 200 --no-pager -o short-iso, /usr/bin/journalctl -u whatsapp-bridge-a -n 500 --no-pager -o short-iso, /usr/bin/journalctl -u whatsapp-bridge-b -n 500 --no-pager -o short-iso
+whatsappmcp ALL=(root) NOPASSWD: WA_RESTART, WA_LOGS

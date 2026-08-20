@@ -43,6 +43,10 @@ function accountsFile(): string {
 
 let cached: WhatsappAccount[] | null = null;
 
+export function invalidateWhatsappAccountsCache(): void {
+  cached = null;
+}
+
 export async function listWhatsappAccounts(): Promise<WhatsappAccount[]> {
   if (cached) return cached;
   try {
