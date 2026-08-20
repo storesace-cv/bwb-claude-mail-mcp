@@ -52,8 +52,13 @@ fi
 echo "==> Sync OAuth shim (APP_MODE=whatsapp)"
 rsync -a --delete \
   --exclude node_modules --exclude dist --exclude .env --exclude .git \
+  --filter 'P .env' \
   "$REPO_ROOT/" "$SHIM_DIR/"
 chown -R root:root "$SHIM_DIR"
+if [[ -f "$SHIM_DIR/.env" ]]; then
+  chgrp whatsappmcp "$SHIM_DIR/.env"
+  chmod 640 "$SHIM_DIR/.env"
+fi
 chgrp whatsappmcp "$SHIM_DIR" || true
 cd "$SHIM_DIR"
 npm ci
@@ -68,6 +73,9 @@ if [[ ! -f "$SHIM_DIR/.env" ]]; then
   echo -n "$AUTH_TOKEN" > "$STATE_DIR/token"
   chown whatsappmcp:whatsappmcp "$STATE_DIR/token"
   chmod 600 "$STATE_DIR/token"
+  chgrp whatsappmcp "$SHIM_DIR/.env"
+  chmod 640 "$SHIM_DIR/.env"
+else
   chgrp whatsappmcp "$SHIM_DIR/.env"
   chmod 640 "$SHIM_DIR/.env"
 fi

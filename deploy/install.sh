@@ -19,8 +19,14 @@ chmod 700 "$STATE_DIR" "$STATE_DIR/oauth-state"
 echo "==> Sync shim from repo"
 rsync -a --delete \
   --exclude node_modules --exclude dist --exclude .env --exclude .git \
+  --filter 'P .env' \
   "$REPO_ROOT/" "$SHIM_DIR/"
 chown -R root:root "$SHIM_DIR"
+# Keep .env readable by the service user after chown -R
+if [[ -f "$SHIM_DIR/.env" ]]; then
+  chgrp mailmcp "$SHIM_DIR/.env"
+  chmod 640 "$SHIM_DIR/.env"
+fi
 chgrp mailmcp "$SHIM_DIR"
 
 echo "==> Build shim"
