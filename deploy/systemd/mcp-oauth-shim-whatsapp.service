@@ -1,0 +1,42 @@
+[Unit]
+Description=mcp-oauth-shim-whatsapp — OAuth 2.1 + admin for whatsapp-mcp
+After=network.target whatsapp-mcp.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=whatsappmcp
+Group=whatsappmcp
+WorkingDirectory=/var/www/mcp-whatsapp-shim
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --env-file=/var/www/mcp-whatsapp-shim/.env --enable-source-maps /var/www/mcp-whatsapp-shim/dist/index.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/whatsapp-mcp
+MemoryMax=512M
+TasksMax=128
+LimitNOFILE=4096
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

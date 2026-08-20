@@ -8,7 +8,9 @@ import { adminRouter } from "./admin/routes.js";
 import { oauthRouter } from "./oauth/routes.js";
 
 async function main(): Promise<void> {
-  await ensureEmptyAccountsFile();
+  if (!config.isWhatsapp) {
+    await ensureEmptyAccountsFile();
+  }
   await initOAuthStore();
   await ensureAdminBootstrap({
     name: process.env.BOOTSTRAP_ADMIN_NAME ?? "Jorge Peixinho",
@@ -26,7 +28,7 @@ async function main(): Promise<void> {
   app.get("/", (_req, res) => {
     res.type("html").send(
       `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-      <title>MCP Mail</title>
+      <title>${config.productName}</title>
       <style>
         body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
           background:#f5f5f7;color:#1d1d1f;-webkit-font-smoothing:antialiased}
@@ -37,7 +39,7 @@ async function main(): Promise<void> {
         a:hover{text-decoration:underline;text-underline-offset:3px}
       </style></head>
       <body><main>
-        <h1>MCP Mail</h1>
+        <h1>${config.productName}</h1>
         <p>bwb.pt</p>
         <p><a href="/admin">Backoffice</a><a href="/health">Health</a><a href="/.well-known/oauth-authorization-server">OAuth</a></p>
       </main></body></html>`
@@ -46,7 +48,7 @@ async function main(): Promise<void> {
 
   // Health is proxied by nginx to upstream; keep a shim-local probe too.
   app.get("/shim-health", (_req, res) => {
-    res.json({ status: "ok", service: "mcp-oauth-shim-mail" });
+    res.json({ status: "ok", service: config.serviceName, mode: config.appMode });
   });
 
   app.use("/admin", adminRouter);
@@ -57,10 +59,11 @@ async function main(): Promise<void> {
       JSON.stringify({
         ts: new Date().toISOString(),
         level: "info",
-        msg: "mcp-oauth-shim-mail listening",
+        msg: `${config.serviceName} listening`,
         host: config.host,
         port: config.port,
         publicUrl: config.publicUrl,
+        appMode: config.appMode,
       })
     );
   });

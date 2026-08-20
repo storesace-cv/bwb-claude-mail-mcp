@@ -54,7 +54,7 @@ async function ensureKeys(): Promise<void> {
     publicKey = await importSPKI(pub, "RS256");
   }
   const jwk = await exportJWK(publicKey);
-  publicJwk = { ...jwk, alg: "RS256", use: "sig", kid: "mail-mcp-1" };
+  publicJwk = { ...jwk, alg: "RS256", use: "sig", kid: config.jwtKid };
 }
 
 function statePath(name: string): string {
@@ -178,7 +178,7 @@ export async function issueTokens(opts: {
     client_id: opts.client_id,
     scope: "mcp",
   })
-    .setProtectedHeader({ alg: "RS256", kid: "mail-mcp-1" })
+    .setProtectedHeader({ alg: "RS256", kid: config.jwtKid })
     .setIssuer(config.publicUrl)
     .setAudience(config.publicUrl)
     .setIssuedAt()

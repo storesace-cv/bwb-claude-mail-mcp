@@ -4,18 +4,24 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full checklist.
 
 ## Status (2026-08-20)
 
-Self-hosted MCP Mail is **live** at `https://mcp-mail.bwb.pt` with OAuth shim + `/admin` backoffice.
+### MCP Mail Self-Hosted + Backoffice — live
 
-Verified:
+- `https://mcp-mail.bwb.pt` — OAuth shim + `/admin`
+- Units: `claude-mail-mcp`, `mcp-oauth-shim-mail`
+- Mailbox configurado; regressão OK após deploy WhatsApp
 
-- `GET /health` → ok (claude-mail-mcp 0.2.1)
-- `POST /mcp` sem auth → 401
-- OAuth metadata em `/.well-known/oauth-authorization-server`
-- Admin bootstrap: Jorge Peixinho / `jorge.peixinho@bwb.pt` (`mustChangePassword: true`)
-- TLS Let's Encrypt activo; fail2ban jail `mcp-oauth-shim` activo
+### MCP WhatsApp Self-Hosted + Backoffice — live (pending QR pair)
+
+- `https://mcp-whatsapp.bwb.pt` — OAuth shim + `/admin` (mesmo auth bootstrap do Mail)
+- Units: `whatsapp-bridge`, `whatsapp-mcp`, `mcp-oauth-shim-whatsapp`
+- Ports loopback: bridge `:18080` (após pair), MCP `:18000`, shim `:18001`
+- TLS Let's Encrypt activo; coabita com Mail no mesmo VPS (users/paths/ports isolados)
+- Admin bootstrap: Jorge Peixinho / `jorge.peixinho@bwb.pt` / `Quer1asEntrar` (`mustChangePassword: true`)
+- Smoke: `/health` → ok, `POST /mcp` sem auth → 401, OAuth metadata OK
 
 **Immediate next steps for the operator:**
 
-1. Login at `https://mcp-mail.bwb.pt/admin` and change the temporary password
-2. Add IMAP/SMTP account(s) (e.g. `mail.bwb.pt:993` / `:465`)
-3. Add Custom Connector in Claude.ai → `https://mcp-mail.bwb.pt/mcp`
+1. Pair WhatsApp (número secundário primeiro): `journalctl -u whatsapp-bridge -f` e escanear o QR
+2. Login `https://mcp-whatsapp.bwb.pt/admin` e alterar a password temporária
+3. Claude.ai Custom Connector → `https://mcp-whatsapp.bwb.pt/mcp`
+4. Depois dos testes, re-pair com o número definitivo se necessário

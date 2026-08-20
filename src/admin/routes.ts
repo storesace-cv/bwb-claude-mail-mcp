@@ -1,5 +1,6 @@
 import { Router } from "express";
-import type { Request, Response } from "express";
+import type { Request, Response, NextFunction } from "express";
+import { config } from "../config.js";
 import {
   forceChangePassword,
   getAdmin,
@@ -15,6 +16,7 @@ import {
   validateAccountInput,
 } from "../store/accounts.js";
 import { testMailConnections } from "../store/mail-test.js";
+import { getWhatsappStatus } from "../store/whatsapp-status.js";
 import {
   checkCsrf,
   clearSessionCookie,
@@ -110,8 +112,51 @@ adminRouter.post("/change-password", requireAdminSession, async (req, res) => {
 });
 
 adminRouter.get("/", requireAdminSession, async (req, res) => {
-  const accounts = await listAccounts();
   const flash = typeof req.query.ok === "string" ? req.query.ok : undefined;
+
+  if (config.isWhatsapp) {
+    const status = await getWhatsappStatus();
+    const mark = (ok: boolean) =>
+      ok ? `<span class="badge">OK</span>` : `<span class="badge">DOWN</span>`;
+    res.type("html").send(
+      layout(
+        "Estado",
+        `${adminHeader("home")}
+        <div class="panel stack">
+          <h2>Serviços</h2>
+          <table>
+            <thead><tr><th>Componente</th><th>Estado</th><th>Detalhe</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>WhatsApp Bridge</td>
+                <td>${mark(status.bridge.ok)}</td>
+                <td class="mono muted">${esc(status.bridge.detail)}</td>
+              </tr>
+              <tr>
+                <td>MCP Python</td>
+                <td>${mark(status.mcp.ok)}</td>
+                <td class="mono muted">${esc(status.mcp.detail)}</td>
+              </tr>
+              <tr>
+                <td>Bridge token</td>
+                <td>${mark(status.bridgeTokenPresent)}</td>
+                <td class="muted">${status.bridgeTokenPresent ? "Presente em store/.bridge-token" : "Em falta — arranca a bridge uma vez"}</td>
+              </tr>
+            </tbody>
+          </table>
+          <h2>Pairing</h2>
+          <p class="muted">O QR code aparece na consola da bridge (SSH/tmux). No telemóvel: WhatsApp → Definições → Dispositivos ligados → Ligar dispositivo.</p>
+          <pre class="mono" style="white-space:pre-wrap;background:var(--fill);padding:0.85rem;border-radius:10px;font-size:0.8125rem">sudo -u whatsappmcp tmux attach -t wa-pair
+# ou: journalctl -u whatsapp-bridge -f</pre>
+          <p class="muted">URL público: <span class="mono">${esc(config.publicUrl)}</span> · MCP: <span class="mono">${esc(config.publicUrl)}/mcp</span></p>
+        </div>`,
+        { flash }
+      )
+    );
+    return;
+  }
+
+  const accounts = await listAccounts();
   const rows = accounts
     .map(
       (a) => `<tr>
@@ -142,6 +187,14 @@ adminRouter.get("/", requireAdminSession, async (req, res) => {
     )
   );
 });
+
+function requireMailMode(_req: Request, res: Response, next: NextFunction): void {
+  if (config.isWhatsapp) {
+    res.status(404).send("Not found");
+    return;
+  }
+  next();
+}
 
 function accountForm(opts: {
   mode: "new" | "edit";
@@ -305,7 +358,7 @@ function accountForm(opts: {
   </script>`;
 }
 
-adminRouter.get("/accounts/new", requireAdminSession, (_req, res) => {
+adminRouter.get("/accounts/new", requireAdminSession, requireMailMode, (_req, res) => {
   res.type("html").send(
     layout(
       "Nova conta",
@@ -325,7 +378,7 @@ adminRouter.get("/accounts/new", requireAdminSession, (_req, res) => {
   );
 });
 
-adminRouter.post("/accounts/test", requireAdminSession, async (req, res) => {
+adminRouter.post("/accounts/test", requireAdminSession, requireMailMode, async (req, res) => {
   if (!checkCsrf(req)) {
     res.status(403).json({ error: "CSRF rejeitado" });
     return;
@@ -357,7 +410,7 @@ adminRouter.post("/accounts/test", requireAdminSession, async (req, res) => {
   }
 });
 
-adminRouter.post("/accounts/new", requireAdminSession, async (req, res) => {
+adminRouter.post("/accounts/new", requireAdminSession, requireMailMode, async (req, res) => {
   if (!checkCsrf(req)) {
     res.status(403).send("CSRF");
     return;
@@ -387,7 +440,7 @@ adminRouter.post("/accounts/new", requireAdminSession, async (req, res) => {
   }
 });
 
-adminRouter.get("/accounts/:id", requireAdminSession, async (req, res) => {
+adminRouter.get("/accounts/:id", requireAdminSession, requireMailMode, async (req, res) => {
   const acc = await getAccount(req.params.id);
   if (!acc) {
     res.status(404).send("Not found");
@@ -421,7 +474,7 @@ adminRouter.get("/accounts/:id", requireAdminSession, async (req, res) => {
   );
 });
 
-adminRouter.post("/accounts/:id", requireAdminSession, async (req, res) => {
+adminRouter.post("/accounts/:id", requireAdminSession, requireMailMode, async (req, res) => {
   if (!checkCsrf(req)) {
     res.status(403).send("CSRF");
     return;
@@ -456,7 +509,7 @@ adminRouter.post("/accounts/:id", requireAdminSession, async (req, res) => {
   }
 });
 
-adminRouter.post("/accounts/:id/delete", requireAdminSession, async (req, res) => {
+adminRouter.post("/accounts/:id/delete", requireAdminSession, requireMailMode, async (req, res) => {
   if (!checkCsrf(req)) {
     res.status(403).send("CSRF");
     return;
@@ -465,7 +518,7 @@ adminRouter.post("/accounts/:id/delete", requireAdminSession, async (req, res) =
   res.redirect("/admin?ok=Conta+apagada");
 });
 
-adminRouter.post("/accounts/:id/default", requireAdminSession, async (req, res) => {
+adminRouter.post("/accounts/:id/default", requireAdminSession, requireMailMode, async (req, res) => {
   if (!checkCsrf(req)) {
     res.status(403).send("CSRF");
     return;

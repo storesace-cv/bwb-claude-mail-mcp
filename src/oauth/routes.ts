@@ -79,7 +79,7 @@ oauthRouter.get("/authorize", async (req, res) => {
     layout(
       "Autorizar Claude",
       `<div class="narrow panel">
-        <h2>Autorizar conector MCP Mail</h2>
+        <h2>Autorizar conector ${esc(config.productName)}</h2>
         <p class="muted">Inicia sessão com a conta de administrador para ligar o Claude.ai.</p>
         <form class="stack" method="post" action="/authorize">
           <input type="hidden" name="client_id" value="${esc(client_id)}" />
@@ -199,7 +199,7 @@ async function proxyMcp(req: Request, res: Response): Promise<void> {
   }
   const verified = await verifyAccessToken(m[1]);
   if (!verified) {
-    // Claude Desktop / local clients may send the shared AUTH_TOKEN directly.
+    // Claude Desktop / local clients may send a shared AUTH_TOKEN directly (mail + optional WA).
     try {
       const upstream = await loadUpstreamBearer();
       const a = Buffer.from(m[1]);
@@ -215,16 +215,17 @@ async function proxyMcp(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    const bearer = await loadUpstreamBearer();
     const upstreamPath = req.path.startsWith("/mcp") ? req.path : "/mcp";
     const upstream = new URL(upstreamPath, config.upstreamMcpUrl);
     if (req.url.includes("?")) {
       upstream.search = req.url.slice(req.url.indexOf("?"));
     }
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${bearer}`,
       Accept: req.get("accept") ?? "application/json, text/event-stream",
     };
+    if (config.injectUpstreamBearer) {
+      headers.Authorization = `Bearer ${await loadUpstreamBearer()}`;
+    }
     const ct = req.get("content-type");
     if (ct) headers["Content-Type"] = ct;
 

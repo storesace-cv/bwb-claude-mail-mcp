@@ -6,12 +6,35 @@ function required(name: string, fallback?: string): string {
   return v;
 }
 
+const appModeRaw = (process.env.APP_MODE ?? "mail").toLowerCase();
+const appMode = appModeRaw === "whatsapp" ? "whatsapp" : "mail";
+const isWhatsapp = appMode === "whatsapp";
+
+const defaultPublicUrl = isWhatsapp ? "https://mcp-whatsapp.bwb.pt" : "https://mcp-mail.bwb.pt";
+const defaultUpstream = isWhatsapp ? "http://127.0.0.1:18000" : "http://127.0.0.1:3220";
+const defaultStateDir = isWhatsapp ? "/var/lib/whatsapp-mcp" : "/var/lib/mail-mcp";
+const defaultPort = isWhatsapp ? "18001" : "3221";
+
 export const config = {
+  appMode: appMode as "mail" | "whatsapp",
+  isWhatsapp,
+  productName: isWhatsapp ? "MCP WhatsApp" : "MCP Mail",
+  serviceName: isWhatsapp ? "mcp-oauth-shim-whatsapp" : "mcp-oauth-shim-mail",
   host: process.env.HOST ?? "127.0.0.1",
-  port: Number(process.env.PORT ?? "3221"),
-  publicUrl: required("PUBLIC_URL", "https://mcp-mail.bwb.pt").replace(/\/$/, ""),
-  upstreamMcpUrl: required("UPSTREAM_MCP_URL", "http://127.0.0.1:3220"),
-  stateDir: required("STATE_DIR", "/var/lib/mail-mcp"),
+  port: Number(process.env.PORT ?? defaultPort),
+  publicUrl: required("PUBLIC_URL", defaultPublicUrl).replace(/\/$/, ""),
+  upstreamMcpUrl: required("UPSTREAM_MCP_URL", defaultUpstream),
+  stateDir: required("STATE_DIR", defaultStateDir),
+  /** Mail injects AUTH_TOKEN into upstream; WhatsApp MCP Python has no native auth. */
+  injectUpstreamBearer:
+    (process.env.INJECT_UPSTREAM_BEARER ?? (isWhatsapp ? "false" : "true")).toLowerCase() ===
+    "true",
+  bridgeUrl: (process.env.BRIDGE_URL ?? "http://127.0.0.1:18080").replace(/\/$/, ""),
+  get bridgeTokenFile() {
+    return (
+      process.env.BRIDGE_TOKEN_FILE ?? path.join(this.stateDir, "store", ".bridge-token")
+    );
+  },
   get accountsFile() {
     return process.env.ACCOUNTS_FILE ?? path.join(this.stateDir, "accounts.json");
   },
@@ -32,7 +55,8 @@ export const config = {
   },
   authToken: process.env.AUTH_TOKEN ?? "",
   sessionSecret: required("SESSION_SECRET", "change-me-in-production"),
-  cookieName: "mcp_mail_admin_session",
+  cookieName: isWhatsapp ? "mcp_wa_admin_session" : "mcp_mail_admin_session",
+  jwtKid: isWhatsapp ? "whatsapp-mcp-1" : "mail-mcp-1",
   accessTokenTtlSec: 3600,
   refreshTokenTtlSec: 30 * 24 * 3600,
   logLevel: process.env.LOG_LEVEL ?? "info",
