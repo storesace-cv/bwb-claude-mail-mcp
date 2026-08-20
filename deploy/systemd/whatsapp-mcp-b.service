@@ -1,5 +1,5 @@
 [Unit]
-Description=whatsapp-mcp-b — Negócio MCP HTTP
+Description=whatsapp-mcp-b — Angola MCP HTTP
 After=network-online.target whatsapp-bridge-b.service
 Wants=network-online.target
 Requires=whatsapp-bridge-b.service

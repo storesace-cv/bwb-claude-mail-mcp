@@ -1,5 +1,5 @@
 [Unit]
-Description=whatsapp-bridge-b — Negócio
+Description=whatsapp-bridge-b — Angola
 After=network-online.target
 Wants=network-online.target
 

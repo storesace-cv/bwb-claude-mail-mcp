@@ -27,7 +27,7 @@ const DEFAULT_ACCOUNTS: WhatsappAccount[] = [
   },
   {
     id: "b",
-    label: "Negócio",
+    label: "Angola",
     bridgeUrl: "http://127.0.0.1:18082",
     mcpUrl: "http://127.0.0.1:18002",
     storeDir: "/var/lib/whatsapp-mcp/accounts/b/store",
