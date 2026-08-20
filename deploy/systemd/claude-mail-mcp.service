@@ -32,8 +32,8 @@ RestrictNamespaces=true
 RestrictRealtime=true
 LockPersonality=true
 SystemCallArchitectures=native
-SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources
+# Node.js needs a broader syscall surface than @system-service alone.
+# Keep NoNewPrivileges + Protect* as the primary hardening.
 ReadWritePaths=/var/lib/mail-mcp
 MemoryMax=512M
 TasksMax=128
