@@ -13,82 +13,67 @@
 |------|--------|
 | Public URL | `https://mcp-mail.bwb.pt` |
 | Admin UI | `https://mcp-mail.bwb.pt/admin` |
-| MCP URL (Claude) | `https://mcp-mail.bwb.pt/mcp` |
+| MCP URL | `https://mcp-mail.bwb.pt/mcp` |
 
-### MCP WhatsApp
+### MCP WhatsApp (dual accounts)
 
 | Item | Value |
 |------|--------|
 | Public URL | `https://mcp-whatsapp.bwb.pt` |
-| Admin UI | `https://mcp-whatsapp.bwb.pt/admin` |
-| MCP URL (Claude) | `https://mcp-whatsapp.bwb.pt/mcp` |
+| Admin UI | `https://mcp-whatsapp.bwb.pt/admin` (2 cartões) |
+| MCP Pessoal (`a`) | `https://mcp-whatsapp.bwb.pt/a/mcp` |
+| MCP Negócio (`b`) | `https://mcp-whatsapp.bwb.pt/b/mcp` |
+| Alias legado | `/mcp` → conta `a` |
 
 ## Paths
 
 | Path | Purpose |
 |------|---------|
 | `/var/www/mail-mcp` | Upstream `claude-mail-mcp` |
-| `/var/www/mcp-mail-shim` | Mail OAuth shim + admin (`APP_MODE=mail`) |
-| `/var/lib/mail-mcp/` | Mail state: `accounts.json`, `admin.json`, JWT keys, `token` |
-| `/var/www/whatsapp-mcp` | Upstream `whatsapp-mcp` (bridge + Python MCP) |
-| `/var/www/mcp-whatsapp-shim` | WhatsApp OAuth shim + admin (`APP_MODE=whatsapp`) |
-| `/var/lib/whatsapp-mcp/` | WA state: `admin.json`, OAuth, `store/` (session + `.bridge-token`) |
+| `/var/www/mcp-mail-shim` | Mail OAuth shim |
+| `/var/lib/mail-mcp/` | Mail state |
+| `/var/www/whatsapp-mcp` | Upstream whatsapp-mcp + `bin/` + `run/{a,b}/` |
+| `/var/www/mcp-whatsapp-shim` | WhatsApp OAuth shim + admin |
+| `/var/lib/whatsapp-mcp/accounts/a/store/` | Sessão Pessoal |
+| `/var/lib/whatsapp-mcp/accounts/b/store/` | Sessão Negócio |
+| `/var/lib/whatsapp-mcp/wa-accounts.json` | Labels/ports das contas |
+| `/etc/whatsapp-mcp/{a,b}/` | Env bridge + MCP por conta |
 
 ## Services
 
 ```bash
 # Mail
-systemctl status claude-mail-mcp mcp-oauth-shim-mail nginx
-journalctl -u claude-mail-mcp -f
-journalctl -u mcp-oauth-shim-mail -f
+systemctl status claude-mail-mcp mcp-oauth-shim-mail
 
-# WhatsApp
-systemctl status whatsapp-bridge whatsapp-mcp mcp-oauth-shim-whatsapp
-journalctl -u whatsapp-bridge -f   # QR pairing appears here
-journalctl -u whatsapp-mcp -f
-journalctl -u mcp-oauth-shim-whatsapp -f
+# WhatsApp dual
+systemctl status whatsapp-bridge-a whatsapp-mcp-a whatsapp-bridge-b whatsapp-mcp-b mcp-oauth-shim-whatsapp
+journalctl -u whatsapp-bridge-a -f
+journalctl -u whatsapp-bridge-b -f
 ```
 
 ## Update
 
 ```bash
-# Mail shim + upstream mail
-bash deploy/install.sh
-
-# WhatsApp stack (does not touch mail)
-bash deploy/install-whatsapp.sh
+bash deploy/install.sh              # Mail
+bash deploy/install-whatsapp.sh     # WhatsApp dual (migra store legado se preciso)
 ```
 
-## WhatsApp pairing
+## Pairing
 
-1. `journalctl -u whatsapp-bridge -f`
-2. Scan QR: WhatsApp → Settings → Linked devices → Link a device
-3. Prefer a secondary number first; REST API (`:18080`) starts only after a successful pair
-4. Session persists in `/var/lib/whatsapp-mcp/store/whatsapp.db`
+1. Abrir `https://mcp-whatsapp.bwb.pt/admin`
+2. Escaneiar o QR do cartão correspondente
+3. Re-pair de uma conta: apagar `accounts/{id}/store/whatsapp.db` e `systemctl restart whatsapp-bridge-{id}`
 
-## Rotate AUTH_TOKEN (Mail)
+## Claude Desktop
 
-```bash
-NEW=$(openssl rand -hex 32)
-echo -n "$NEW" > /var/lib/mail-mcp/token
-chown mailmcp:mailmcp /var/lib/mail-mcp/token
-chmod 600 /var/lib/mail-mcp/token
-sed -i "s/^AUTH_TOKEN=.*/AUTH_TOKEN=$NEW/" /var/www/mail-mcp/.env
-sed -i "s/^AUTH_TOKEN=.*/AUTH_TOKEN=$NEW/" /var/www/mcp-mail-shim/.env
-systemctl restart claude-mail-mcp mcp-oauth-shim-mail
-```
+- Pessoal: `mcp-remote` → `https://mcp-whatsapp.bwb.pt/a/mcp` + Bearer `AUTH_TOKEN`
+- Negócio: segundo server → `https://mcp-whatsapp.bwb.pt/b/mcp` + mesmo Bearer
 
 ## Backup
 
-Encrypt and back up:
-
-- `/var/lib/mail-mcp/` (credentials + OAuth signing key)
-- `/var/lib/whatsapp-mcp/` (admin, OAuth keys, WhatsApp session store)
-
-Losing a JWT key only forces Claude to re-authorize that stack. Losing `whatsapp.db` requires a new QR pair.
+- `/var/lib/mail-mcp/`
+- `/var/lib/whatsapp-mcp/` (admin, OAuth keys, `accounts/*/store`)
 
 ## Safety
 
-Prefer `move_message` to Trash over `delete_message` (irreversible).
-
-WhatsApp: no bulk/broadcast; prefer DMs. Bridge is unofficial (whatsmeow) — Meta account risk is residual.
+Prefer `move_message` to Trash over `delete_message`. WhatsApp bridge is unofficial (whatsmeow) — residual Meta account risk.

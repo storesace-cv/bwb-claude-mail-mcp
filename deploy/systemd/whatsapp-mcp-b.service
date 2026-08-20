@@ -1,0 +1,45 @@
+[Unit]
+Description=whatsapp-mcp-b — Negócio MCP HTTP
+After=network-online.target whatsapp-bridge-b.service
+Wants=network-online.target
+Requires=whatsapp-bridge-b.service
+
+[Service]
+Type=simple
+User=whatsappmcp
+Group=whatsappmcp
+WorkingDirectory=/var/www/whatsapp-mcp/whatsapp-mcp-server
+EnvironmentFile=-/etc/whatsapp-mcp/b/mcp.env
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/var/lib/whatsapp-mcp
+ExecStart=/usr/local/bin/uv run main.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/whatsapp-mcp /var/log/whatsapp-mcp
+MemoryMax=512M
+TasksMax=128
+LimitNOFILE=4096
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

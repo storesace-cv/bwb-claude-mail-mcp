@@ -16,7 +16,8 @@ import {
   validateAccountInput,
 } from "../store/accounts.js";
 import { testMailConnections } from "../store/mail-test.js";
-import { getWhatsappStatus } from "../store/whatsapp-status.js";
+import { getAllWhatsappStatuses } from "../store/whatsapp-status.js";
+import type { WhatsappAccountStatus } from "../store/whatsapp-status.js";
 import {
   checkCsrf,
   clearSessionCookie,
@@ -115,69 +116,25 @@ adminRouter.get("/", requireAdminSession, async (req, res) => {
   const flash = typeof req.query.ok === "string" ? req.query.ok : undefined;
 
   if (config.isWhatsapp) {
-    const status = await getWhatsappStatus();
+    const statuses = await getAllWhatsappStatuses();
     const mark = (ok: boolean) =>
       ok ? `<span class="badge">OK</span>` : `<span class="badge">DOWN</span>`;
-    const pairBadge =
-      status.pairingState === "paired"
-        ? `<span class="badge">Associado</span>`
-        : status.pairingState === "awaiting_qr"
-          ? `<span class="badge">À espera de scan</span>`
-          : `<span class="badge">A iniciar…</span>`;
+    const needsRefresh = statuses.some(
+      (s) => s.pairingState === "awaiting_qr" || s.pairingState === "starting"
+    );
 
-    let pairingBlock: string;
-    if (status.pairingState === "paired") {
-      pairingBlock = `<h2>Conta WhatsApp</h2>
-        <p>${pairBadge} Sessão activa. A API REST da bridge está disponível em loopback.</p>
-        <p class="muted">Para re-associar outro número: apaga a sessão em <span class="mono">store/whatsapp.db</span> e reinicia <span class="mono">whatsapp-bridge</span> (faz backup antes).</p>`;
-    } else if (status.qrDataUrl) {
-      pairingBlock = `<h2>Associar conta</h2>
-        <p>${pairBadge} Escaneia este QR no telemóvel: WhatsApp → Definições → Dispositivos ligados → Ligar dispositivo.</p>
-        <div style="display:flex;justify-content:center;padding:1.25rem 0">
-          <img src="${status.qrDataUrl}" width="280" height="280" alt="QR code WhatsApp" style="border-radius:12px;background:#fff;padding:8px;box-shadow:var(--shadow)" />
-        </div>
-        <p class="muted">A página actualiza sozinha a cada 5s. O código expira e é renovado automaticamente.</p>
-        <script>setTimeout(function(){ location.reload(); }, 5000);</script>`;
-    } else {
-      pairingBlock = `<h2>Associar conta</h2>
-        <p>${pairBadge} Ainda sem QR — a bridge pode estar a arrancar ou a renovar o código.</p>
-        <p class="muted">Se demorar mais de ~30s, verifica <span class="mono">journalctl -u whatsapp-bridge -f</span> e reinicia o serviço.</p>
-        <script>setTimeout(function(){ location.reload(); }, 5000);</script>`;
-    }
+    const cards = statuses.map((s) => renderWhatsappCard(s, mark)).join("\n");
 
     res.type("html").send(
       layout(
         "Estado",
         `${adminHeader("home")}
-        <div class="panel stack">
-          <h2>Serviços</h2>
-          <table>
-            <thead><tr><th>Componente</th><th>Estado</th><th>Detalhe</th></tr></thead>
-            <tbody>
-              <tr>
-                <td>WhatsApp Bridge</td>
-                <td>${mark(status.bridge.ok || status.pairingState === "awaiting_qr")}</td>
-                <td class="mono muted">${esc(
-                  status.pairingState === "awaiting_qr" && !status.bridge.ok
-                    ? "Processo a correr — à espera de pair (API sobe depois do scan)"
-                    : status.bridge.detail
-                )}</td>
-              </tr>
-              <tr>
-                <td>MCP Python</td>
-                <td>${mark(status.mcp.ok)}</td>
-                <td class="mono muted">${esc(status.mcp.detail)}</td>
-              </tr>
-              <tr>
-                <td>Bridge token</td>
-                <td>${mark(status.bridgeTokenPresent)}</td>
-                <td class="muted">${status.bridgeTokenPresent ? "Presente em store/.bridge-token" : "Em falta — arranca a bridge uma vez"}</td>
-              </tr>
-            </tbody>
-          </table>
-          ${pairingBlock}
-          <p class="muted">URL público: <span class="mono">${esc(config.publicUrl)}</span> · MCP: <span class="mono">${esc(config.publicUrl)}/mcp</span></p>
-        </div>`,
+        <div class="stack" style="gap:1.25rem">
+          ${cards}
+        </div>
+        <p class="muted" style="margin-top:1.5rem">URL público: <span class="mono">${esc(config.publicUrl)}</span>
+          · Alias legado <span class="mono">/mcp</span> → conta <span class="mono">a</span> (Pessoal)</p>
+        ${needsRefresh ? `<script>setTimeout(function(){ location.reload(); }, 5000);</script>` : ""}`,
         { flash }
       )
     );
@@ -215,6 +172,66 @@ adminRouter.get("/", requireAdminSession, async (req, res) => {
     )
   );
 });
+
+function renderWhatsappCard(
+  status: WhatsappAccountStatus,
+  mark: (ok: boolean) => string
+): string {
+  const a = status.account;
+  const pairBadge =
+    status.pairingState === "paired"
+      ? `<span class="badge">Associado</span>`
+      : status.pairingState === "awaiting_qr"
+        ? `<span class="badge">À espera de scan</span>`
+        : `<span class="badge">A iniciar…</span>`;
+
+  let pairingBody: string;
+  if (status.pairingState === "paired") {
+    pairingBody = `<p>${pairBadge} Sessão activa.</p>
+      <p class="muted">Re-pair: apaga <span class="mono">${esc(a.storeDir)}/whatsapp.db</span> e
+      <span class="mono">systemctl restart ${esc(a.bridgeUnit)}</span> (backup antes).</p>`;
+  } else if (status.qrDataUrl) {
+    pairingBody = `<p>${pairBadge} Escaneia o QR: WhatsApp → Definições → Dispositivos ligados → Ligar dispositivo.</p>
+      <div style="display:flex;justify-content:center;padding:1rem 0">
+        <img src="${status.qrDataUrl}" width="280" height="280" alt="QR ${esc(a.label)}"
+          style="border-radius:12px;background:#fff;padding:8px;box-shadow:var(--shadow)" />
+      </div>
+      <p class="muted">Actualização automática a cada 5s.</p>`;
+  } else {
+    pairingBody = `<p>${pairBadge} Ainda sem QR — a bridge pode estar a arrancar.</p>
+      <p class="muted">Se demorar: <span class="mono">journalctl -u ${esc(a.bridgeUnit)} -f</span></p>`;
+  }
+
+  return `<div class="panel stack">
+    <h2>${esc(a.label)} <span class="muted mono" style="font-weight:400;font-size:0.875rem">(${esc(a.id)})</span></h2>
+    <table>
+      <thead><tr><th>Componente</th><th>Estado</th><th>Detalhe</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Bridge</td>
+          <td>${mark(status.bridge.ok || status.pairingState === "awaiting_qr")}</td>
+          <td class="mono muted">${esc(
+            status.pairingState === "awaiting_qr" && !status.bridge.ok
+              ? "À espera de pair (API sobe depois do scan)"
+              : status.bridge.detail
+          )}</td>
+        </tr>
+        <tr>
+          <td>MCP Python</td>
+          <td>${mark(status.mcp.ok)}</td>
+          <td class="mono muted">${esc(status.mcp.detail)}</td>
+        </tr>
+        <tr>
+          <td>Bridge token</td>
+          <td>${mark(status.bridgeTokenPresent)}</td>
+          <td class="muted">${status.bridgeTokenPresent ? "Presente" : "Em falta"}</td>
+        </tr>
+      </tbody>
+    </table>
+    ${pairingBody}
+    <p class="muted">Claude connector: <span class="mono">${esc(status.publicMcpUrl)}</span></p>
+  </div>`;
+}
 
 function requireMailMode(_req: Request, res: Response, next: NextFunction): void {
   if (config.isWhatsapp) {

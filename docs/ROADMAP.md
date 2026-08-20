@@ -4,40 +4,27 @@
 
 ### MCP Mail
 
-- [x] VPS Ubuntu 24.04 hardened (SSH key-only, UFW, fail2ban, unattended-upgrades)
-- [x] DNS `mcp-mail.bwb.pt` → `178.159.34.165`
-- [x] Deploy upstream `claude-mail-mcp` v0.2.1 on `:3220` (loopback)
-- [x] Custom OAuth 2.1 + DCR + PKCE shim on `:3221` (loopback)
-- [x] Admin backoffice at `/admin` (multi-account CRUD, profile, force password change)
-- [x] nginx + Let's Encrypt for `https://mcp-mail.bwb.pt`
-- [x] systemd units (Protect* hardening; SystemCallFilter relaxed for Node on 24.04)
-- [x] Repo `storesace-cv/bwb-claude-mail-mcp` with deploy scripts
-- [x] Smoke tests: `/health`, `/mcp` 401, OAuth metadata, admin bootstrap
+- [x] VPS Ubuntu 24.04 hardened; DNS `mcp-mail.bwb.pt`
+- [x] `claude-mail-mcp` + OAuth shim + `/admin`
+- [x] nginx + Let's Encrypt; smoke tests
 
-### MCP WhatsApp (cohabitation on same VPS)
+### MCP WhatsApp (cohabitation)
 
-- [x] DNS `mcp-whatsapp.bwb.pt` → `178.159.34.165`
-- [x] Go 1.27 + uv + ffmpeg; system user `whatsappmcp`
-- [x] Upstream `verygoodplugins/whatsapp-mcp` bridge + Python MCP HTTP
-- [x] OAuth shim `APP_MODE=whatsapp` on `:18001` + `/admin` (same auth bootstrap as Mail)
-- [x] systemd: `whatsapp-bridge`, `whatsapp-mcp`, `mcp-oauth-shim-whatsapp`
-- [x] nginx + Let's Encrypt for `https://mcp-whatsapp.bwb.pt` (mail vhost untouched)
-- [x] Smoke: `/health`, `/mcp` 401, OAuth metadata; mail regression OK
-- [x] Deploy script `deploy/install-whatsapp.sh`
+- [x] DNS `mcp-whatsapp.bwb.pt`; Go + uv; user `whatsappmcp`
+- [x] OAuth shim + `/admin` with QR pairing
+- [x] Streamable HTTP session header proxy fix (Claude Desktop)
+- [x] **Dual accounts**: slots `a` (Pessoal) + `b` (Negócio), 2 cartões no admin, connectors `/a/mcp` + `/b/mcp`
+- [x] Migração store legado → `accounts/a/store`
 
 ## Next
 
-- [ ] Scan WhatsApp QR (`journalctl -u whatsapp-bridge -f`) with secondary number, then validate tools
-- [ ] Change WhatsApp admin password at `https://mcp-whatsapp.bwb.pt/admin`
-- [ ] Connect Claude.ai Custom Connector → `https://mcp-whatsapp.bwb.pt/mcp`
-- [ ] Re-pair with production number after secondary tests
-- [ ] Encrypted off-host backup of `/var/lib/mail-mcp/` and `/var/lib/whatsapp-mcp/store/`
+- [ ] Pair / validate conta Negócio (`b`) se ainda sem sessão
+- [ ] Claude Desktop: `bwb-whatsapp` → `/a/mcp`; adicionar `bwb-whatsapp-negocio` → `/b/mcp`
+- [ ] Encrypted off-host backup of `/var/lib/mail-mcp/` and `/var/lib/whatsapp-mcp/accounts/`
 - [ ] AUTH_TOKEN rotation schedule (90 days)
-- [ ] Optional egress allowlist on systemd units
 
 ## Out of scope (for now)
 
-- Multi-admin / multi-tenant
-- WhatsApp webhooks (`WEBHOOK_ENABLED=false`)
-- Bulk/broadcast messaging
-- At-rest encryption of secrets beyond filesystem perms
+- Dynamic N accounts CRUD beyond fixed a/b
+- Single Claude connector that switches accounts
+- WhatsApp webhooks / bulk messaging

@@ -1,0 +1,44 @@
+[Unit]
+Description=whatsapp-bridge-a — Pessoal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=whatsappmcp
+Group=whatsappmcp
+WorkingDirectory=/var/www/whatsapp-mcp/run/a
+EnvironmentFile=-/etc/whatsapp-mcp/a/bridge.env
+Environment=PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/var/lib/whatsapp-mcp
+ExecStart=/var/www/whatsapp-mcp/bin/whatsapp-bridge
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/whatsapp-mcp /var/log/whatsapp-mcp /var/www/whatsapp-mcp/run/a
+MemoryMax=1G
+TasksMax=256
+LimitNOFILE=8192
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

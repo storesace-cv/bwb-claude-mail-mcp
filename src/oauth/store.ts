@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { SignJWT, exportJWK, importPKCS8, importSPKI, jwtVerify, type KeyLike, type JWK } from "jose";
 import { config } from "../config.js";
+import { allPublicMcpAudiences } from "../store/wa-accounts.js";
 
 export interface OAuthClient {
   client_id: string;
@@ -20,6 +21,8 @@ export interface AuthCode {
   code_challenge_method: "S256";
   expires_at: number;
   admin_email: string;
+  /** OAuth resource / MCP URL audience */
+  resource?: string;
 }
 
 export interface RefreshRecord {
@@ -27,6 +30,7 @@ export interface RefreshRecord {
   client_id: string;
   admin_email: string;
   expires_at: number;
+  resource?: string;
 }
 
 let privateKey: KeyLike | null = null;
@@ -166,6 +170,7 @@ export function verifyPkce(verifier: string, challenge: string): boolean {
 export async function issueTokens(opts: {
   client_id: string;
   admin_email: string;
+  resource?: string;
 }): Promise<{
   access_token: string;
   refresh_token: string;
@@ -173,6 +178,7 @@ export async function issueTokens(opts: {
   expires_in: number;
 }> {
   await ensureKeys();
+  const audience = opts.resource?.trim() || config.publicUrl;
   const access_token = await new SignJWT({
     sub: opts.admin_email,
     client_id: opts.client_id,
@@ -180,7 +186,7 @@ export async function issueTokens(opts: {
   })
     .setProtectedHeader({ alg: "RS256", kid: config.jwtKid })
     .setIssuer(config.publicUrl)
-    .setAudience(config.publicUrl)
+    .setAudience(audience)
     .setIssuedAt()
     .setExpirationTime(`${config.accessTokenTtlSec}s`)
     .sign(privateKey!);
@@ -191,6 +197,7 @@ export async function issueTokens(opts: {
     client_id: opts.client_id,
     admin_email: opts.admin_email,
     expires_at: Date.now() + config.refreshTokenTtlSec * 1000,
+    resource: audience,
   };
   const refreshes = await readJson<RefreshRecord[]>(statePath("refresh.json"), []);
   const pruned = refreshes.filter((r) => r.expires_at > Date.now());
@@ -208,9 +215,12 @@ export async function issueTokens(opts: {
 export async function verifyAccessToken(token: string): Promise<{ sub: string } | null> {
   try {
     await ensureKeys();
+    const audiences = config.isWhatsapp
+      ? await allPublicMcpAudiences()
+      : [config.publicUrl];
     const { payload } = await jwtVerify(token, publicKey!, {
       issuer: config.publicUrl,
-      audience: config.publicUrl,
+      audience: audiences,
     });
     if (typeof payload.sub !== "string") return null;
     return { sub: payload.sub };
@@ -232,7 +242,11 @@ export async function rotateRefreshToken(refreshToken: string): Promise<{
   const rec = refreshes[idx];
   refreshes.splice(idx, 1);
   await writeJson(statePath("refresh.json"), refreshes);
-  return issueTokens({ client_id: rec.client_id, admin_email: rec.admin_email });
+  return issueTokens({
+    client_id: rec.client_id,
+    admin_email: rec.admin_email,
+    resource: rec.resource,
+  });
 }
 
 export async function loadUpstreamBearer(): Promise<string> {

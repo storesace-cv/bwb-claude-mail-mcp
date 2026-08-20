@@ -17,6 +17,11 @@ import {
 import { config } from "../config.js";
 import { checkCsrf } from "../admin/session.js";
 import { esc, layout } from "../ui/html.js";
+import {
+  accountFromMcpPath,
+  listWhatsappAccounts,
+  publicMcpUrl,
+} from "../store/wa-accounts.js";
 
 export const oauthRouter = Router();
 
@@ -24,9 +29,38 @@ oauthRouter.get("/.well-known/oauth-authorization-server", (_req, res) => {
   res.json(metadata());
 });
 
-oauthRouter.get("/.well-known/oauth-protected-resource", (_req, res) => {
+oauthRouter.get("/.well-known/oauth-protected-resource", async (_req, res) => {
+  if (config.isWhatsapp) {
+    const accounts = await listWhatsappAccounts();
+    res.json({
+      resources: accounts.map((a) => publicMcpUrl(a)),
+      authorization_servers: [config.publicUrl],
+      scopes_supported: ["mcp"],
+    });
+    return;
+  }
   res.json({
     resource: config.publicUrl,
+    authorization_servers: [config.publicUrl],
+    scopes_supported: ["mcp"],
+  });
+});
+
+oauthRouter.get("/.well-known/oauth-protected-resource/a/mcp", async (_req, res) => {
+  const accounts = await listWhatsappAccounts();
+  const a = accounts.find((x) => x.id === "a");
+  res.json({
+    resource: a ? publicMcpUrl(a) : `${config.publicUrl}/a/mcp`,
+    authorization_servers: [config.publicUrl],
+    scopes_supported: ["mcp"],
+  });
+});
+
+oauthRouter.get("/.well-known/oauth-protected-resource/b/mcp", async (_req, res) => {
+  const accounts = await listWhatsappAccounts();
+  const b = accounts.find((x) => x.id === "b");
+  res.json({
+    resource: b ? publicMcpUrl(b) : `${config.publicUrl}/b/mcp`,
     authorization_servers: [config.publicUrl],
     scopes_supported: ["mcp"],
   });
@@ -60,6 +94,7 @@ oauthRouter.get("/authorize", async (req, res) => {
   const code_challenge = String(req.query.code_challenge ?? "");
   const code_challenge_method = String(req.query.code_challenge_method ?? "");
   const response_type = String(req.query.response_type ?? "");
+  const resource = String(req.query.resource ?? "");
 
   if (response_type !== "code") {
     res.status(400).send("unsupported response_type");
@@ -87,6 +122,7 @@ oauthRouter.get("/authorize", async (req, res) => {
           <input type="hidden" name="state" value="${esc(state)}" />
           <input type="hidden" name="code_challenge" value="${esc(code_challenge)}" />
           <input type="hidden" name="code_challenge_method" value="S256" />
+          <input type="hidden" name="resource" value="${esc(resource)}" />
           <label>Email<input type="email" name="email" required autocomplete="username" /></label>
           <label>Password<input type="password" name="password" required autocomplete="current-password" /></label>
           <div class="actions"><button type="submit">Autorizar</button></div>
@@ -107,6 +143,7 @@ oauthRouter.post("/authorize", async (req, res) => {
   const code_challenge = String(req.body.code_challenge ?? "");
   const email = String(req.body.email ?? "");
   const password = String(req.body.password ?? "");
+  const resource = String(req.body.resource ?? "").trim() || undefined;
 
   const client = await getClient(client_id);
   if (!client || !client.redirect_uris.includes(redirect_uri)) {
@@ -138,6 +175,7 @@ oauthRouter.post("/authorize", async (req, res) => {
     code_challenge_method: "S256",
     expires_at: Date.now() + 60_000,
     admin_email: admin.email,
+    resource,
   });
 
   const url = new URL(redirect_uri);
@@ -163,9 +201,12 @@ oauthRouter.post("/token", async (req, res) => {
         res.status(400).json({ error: "invalid_grant", error_description: "pkce failed" });
         return;
       }
+      const resource =
+        String(req.body.resource ?? "").trim() || stored.resource || undefined;
       const tokens = await issueTokens({
         client_id: stored.client_id,
         admin_email: stored.admin_email,
+        resource,
       });
       res.json(tokens);
       return;
@@ -187,19 +228,23 @@ oauthRouter.post("/token", async (req, res) => {
 });
 
 async function proxyMcp(req: Request, res: Response): Promise<void> {
+  const account = config.isWhatsapp ? await accountFromMcpPath(req.path) : null;
+  const resourceMeta = account
+    ? `${config.publicUrl}/.well-known/oauth-protected-resource${account.publicMcpPath}`
+    : `${config.publicUrl}/.well-known/oauth-protected-resource`;
+
   const auth = req.get("authorization") ?? "";
   const m = /^Bearer\s+(.+)$/i.exec(auth);
   if (!m) {
     res.set(
       "WWW-Authenticate",
-      `Bearer FAKESECRET_g3h4i5j6k7l8m9n0o1p2="${config.publicUrl}/.well-known/oauth-protected-resource"`
+      `Bearer FAKESECRET_g3h4i5j6k7l8m9n0o1p2="${resourceMeta}"`
     );
     res.status(401).json({ error: "unauthorized" });
     return;
   }
   const verified = await verifyAccessToken(m[1]);
   if (!verified) {
-    // Claude Desktop / local clients may send a shared AUTH_TOKEN directly (mail + optional WA).
     try {
       const upstream = await loadUpstreamBearer();
       const a = Buffer.from(m[1]);
@@ -215,11 +260,25 @@ async function proxyMcp(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    const upstreamPath = req.path.startsWith("/mcp") ? req.path : "/mcp";
-    const upstream = new URL(upstreamPath, config.upstreamMcpUrl);
-    if (req.url.includes("?")) {
-      upstream.search = req.url.slice(req.url.indexOf("?"));
+    let upstreamFixed: URL;
+    if (config.isWhatsapp) {
+      if (!account) {
+        res.status(404).json({ error: "unknown_account" });
+        return;
+      }
+      const base = new URL(account.mcpUrl);
+      upstreamFixed = new URL("/mcp", `${base.protocol}//${base.host}`);
+      if (req.url.includes("?")) {
+        upstreamFixed.search = req.url.slice(req.url.indexOf("?"));
+      }
+    } else {
+      const upstreamPath = req.path.startsWith("/mcp") ? req.path : "/mcp";
+      upstreamFixed = new URL(upstreamPath, config.upstreamMcpUrl);
+      if (req.url.includes("?")) {
+        upstreamFixed.search = req.url.slice(req.url.indexOf("?"));
+      }
     }
+
     const headers: Record<string, string> = {
       Accept: req.get("accept") ?? "application/json, text/event-stream",
     };
@@ -229,8 +288,6 @@ async function proxyMcp(req: Request, res: Response): Promise<void> {
     const ct = req.get("content-type");
     if (ct) headers["Content-Type"] = ct;
 
-    // Streamable HTTP (Python MCP) requires the client session id on every
-    // request after initialize. Mail's Node MCP does not use this header.
     const forwardHeaders = [
       "mcp-session-id",
       "mcp-protocol-version",
@@ -246,15 +303,13 @@ async function proxyMcp(req: Request, res: Response): Promise<void> {
       headers,
     };
     if (req.method !== "GET" && req.method !== "HEAD") {
-      // Notifications may arrive with an empty body; avoid sending "{}" when
-      // Express left req.body undefined and the raw body was empty.
       if (req.body !== undefined && req.body !== null) {
         init.body = JSON.stringify(req.body);
         if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
       }
     }
 
-    const upstreamRes = await fetch(upstream, init);
+    const upstreamRes = await fetch(upstreamFixed, init);
     res.status(upstreamRes.status);
     const passHeaders = [
       "content-type",
@@ -278,3 +333,7 @@ async function proxyMcp(req: Request, res: Response): Promise<void> {
 
 oauthRouter.all("/mcp", proxyMcp);
 oauthRouter.all("/mcp/*", proxyMcp);
+oauthRouter.all("/a/mcp", proxyMcp);
+oauthRouter.all("/a/mcp/*", proxyMcp);
+oauthRouter.all("/b/mcp", proxyMcp);
+oauthRouter.all("/b/mcp/*", proxyMcp);

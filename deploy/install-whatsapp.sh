@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy / update WhatsApp MCP stack on the same VPS as MCP Mail (cohabitation).
+# Deploy / update dual-account WhatsApp MCP (cohabits with Mail on same VPS).
 # Does NOT touch mail-mcp units, paths, or vhost.
 set -euo pipefail
 
@@ -14,20 +14,50 @@ export PATH="/usr/local/go/bin:/usr/local/bin:$PATH"
 
 echo "==> Ensuring user and directories"
 id whatsappmcp >/dev/null 2>&1 || useradd --system --home "$STATE_DIR" --shell /usr/sbin/nologin --comment "whatsapp-mcp" whatsappmcp
-mkdir -p "$STATE_DIR/store" "$STATE_DIR/outbox" "$STATE_DIR/oauth-state" \
-  "$WA_DIR/bin" "$SHIM_DIR" /var/log/whatsapp-mcp /etc/whatsapp-mcp
+mkdir -p \
+  "$STATE_DIR/accounts/a/store" "$STATE_DIR/accounts/a/outbox" \
+  "$STATE_DIR/accounts/b/store" "$STATE_DIR/accounts/b/outbox" \
+  "$STATE_DIR/oauth-state" \
+  "$WA_DIR/bin" "$WA_DIR/run/a" "$WA_DIR/run/b" \
+  "$SHIM_DIR" /var/log/whatsapp-mcp \
+  /etc/whatsapp-mcp/a /etc/whatsapp-mcp/b
+
+# Migrate legacy single store → accounts/a (once)
+if [[ -d "$STATE_DIR/store" ]] && [[ ! -f "$STATE_DIR/accounts/a/store/whatsapp.db" ]]; then
+  echo "==> Migrating legacy store → accounts/a/store"
+  shopt -s dotglob nullglob
+  for f in "$STATE_DIR/store"/*; do
+    [[ -e "$f" ]] || continue
+    mv "$f" "$STATE_DIR/accounts/a/store/"
+  done
+  rmdir "$STATE_DIR/store" 2>/dev/null || true
+fi
+
 chown -R whatsappmcp:whatsappmcp "$STATE_DIR" /var/log/whatsapp-mcp
-chmod 700 "$STATE_DIR" "$STATE_DIR/store" "$STATE_DIR/outbox"
+chmod 700 "$STATE_DIR" "$STATE_DIR/accounts/a/store" "$STATE_DIR/accounts/b/store"
+chmod 700 "$STATE_DIR/accounts/a/outbox" "$STATE_DIR/accounts/b/outbox"
+
+# Bridge run dirs: relative store/ symlink
+ln -sfn "$STATE_DIR/accounts/a/store" "$WA_DIR/run/a/store"
+ln -sfn "$STATE_DIR/accounts/b/store" "$WA_DIR/run/b/store"
+chown -h whatsappmcp:whatsappmcp "$WA_DIR/run/a/store" "$WA_DIR/run/b/store"
+chown whatsappmcp:whatsappmcp "$WA_DIR/run/a" "$WA_DIR/run/b"
+
+if [[ ! -f "$STATE_DIR/wa-accounts.json" ]]; then
+  cp "$REPO_ROOT/deploy/env/wa-accounts.json.example" "$STATE_DIR/wa-accounts.json"
+  chown whatsappmcp:whatsappmcp "$STATE_DIR/wa-accounts.json"
+  chmod 640 "$STATE_DIR/wa-accounts.json"
+fi
 
 echo "==> Upstream whatsapp-mcp"
 if [[ ! -d "$WA_DIR/.git" ]]; then
   rm -rf "$WA_DIR"
   git clone --depth 1 https://github.com/verygoodplugins/whatsapp-mcp.git "$WA_DIR"
+  mkdir -p "$WA_DIR/bin" "$WA_DIR/run/a" "$WA_DIR/run/b"
+  ln -sfn "$STATE_DIR/accounts/a/store" "$WA_DIR/run/a/store"
+  ln -sfn "$STATE_DIR/accounts/b/store" "$WA_DIR/run/b/store"
 fi
 chown -R whatsappmcp:whatsappmcp "$WA_DIR"
-rm -rf "$WA_DIR/whatsapp-bridge/store"
-ln -sfn "$STATE_DIR/store" "$WA_DIR/whatsapp-bridge/store"
-chown -h whatsappmcp:whatsappmcp "$WA_DIR/whatsapp-bridge/store"
 
 echo "==> Patch bridge (QR → store/qr.code for /admin)"
 python3 "$REPO_ROOT/deploy/patches/patch-whatsapp-bridge-qr.py" "$WA_DIR/whatsapp-bridge/main.go"
@@ -40,17 +70,34 @@ echo "==> uv sync MCP"
 sudo -u whatsappmcp env PATH="/usr/local/bin:$PATH" HOME="$STATE_DIR" \
   bash -lc "cd '$WA_DIR/whatsapp-mcp-server' && uv sync"
 
-echo "==> Bridge / MCP env"
-if [[ ! -f /etc/whatsapp-mcp/bridge.env ]]; then
-  cp "$REPO_ROOT/deploy/env/whatsapp-bridge.env.example" /etc/whatsapp-mcp/bridge.env
-  chgrp whatsappmcp /etc/whatsapp-mcp/bridge.env
-  chmod 640 /etc/whatsapp-mcp/bridge.env
-fi
-if [[ ! -f /etc/whatsapp-mcp/mcp.env ]]; then
-  cp "$REPO_ROOT/deploy/env/whatsapp-mcp.env.example" /etc/whatsapp-mcp/mcp.env
-  chgrp whatsappmcp /etc/whatsapp-mcp/mcp.env
-  chmod 640 /etc/whatsapp-mcp/mcp.env
-fi
+install_env() {
+  local dest="$1" example="$2"
+  if [[ ! -f "$dest" ]]; then
+    cp "$example" "$dest"
+  fi
+  chgrp whatsappmcp "$dest"
+  chmod 640 "$dest"
+}
+
+install_env /etc/whatsapp-mcp/a/bridge.env "$REPO_ROOT/deploy/env/whatsapp-bridge-a.env.example"
+install_env /etc/whatsapp-mcp/b/bridge.env "$REPO_ROOT/deploy/env/whatsapp-bridge-b.env.example"
+install_env /etc/whatsapp-mcp/a/mcp.env "$REPO_ROOT/deploy/env/whatsapp-mcp-a.env.example"
+install_env /etc/whatsapp-mcp/b/mcp.env "$REPO_ROOT/deploy/env/whatsapp-mcp-b.env.example"
+
+sync_bridge_token() {
+  local slot="$1" store="$STATE_DIR/accounts/$1/store" mcp_env="/etc/whatsapp-mcp/$1/mcp.env"
+  if [[ -f "$store/.bridge-token" ]]; then
+    chmod 600 "$store/.bridge-token"
+    chown whatsappmcp:whatsappmcp "$store/.bridge-token"
+    local TOKEN
+    TOKEN="$(tr -d '\n' < "$store/.bridge-token")"
+    if grep -q '^WHATSAPP_BRIDGE_TOKEN=' "$mcp_env"; then
+      sed -i "s|^WHATSAPP_BRIDGE_TOKEN=.*|WHATSAPP_BRIDGE_TOKEN=$TOKEN|" "$mcp_env"
+    else
+      echo "WHATSAPP_BRIDGE_TOKEN=$TOKEN" >> "$mcp_env"
+    fi
+  fi
+}
 
 echo "==> Sync OAuth shim (APP_MODE=whatsapp)"
 rsync -a --delete \
@@ -82,34 +129,38 @@ else
   chgrp whatsappmcp "$SHIM_DIR/.env"
   chmod 640 "$SHIM_DIR/.env"
 fi
+# Point shim at accounts file
+if ! grep -q '^WA_ACCOUNTS_FILE=' "$SHIM_DIR/.env"; then
+  echo "WA_ACCOUNTS_FILE=$STATE_DIR/wa-accounts.json" >> "$SHIM_DIR/.env"
+fi
 
-echo "==> systemd units"
-cp "$REPO_ROOT/deploy/systemd/whatsapp-bridge.service" /etc/systemd/system/
-cp "$REPO_ROOT/deploy/systemd/whatsapp-mcp.service" /etc/systemd/system/
+echo "==> systemd units (dual accounts)"
+# Stop legacy single-instance if present
+systemctl stop whatsapp-bridge.service whatsapp-mcp.service 2>/dev/null || true
+systemctl disable whatsapp-bridge.service whatsapp-mcp.service 2>/dev/null || true
+
+cp "$REPO_ROOT/deploy/systemd/whatsapp-bridge-a.service" /etc/systemd/system/
+cp "$REPO_ROOT/deploy/systemd/whatsapp-bridge-b.service" /etc/systemd/system/
+cp "$REPO_ROOT/deploy/systemd/whatsapp-mcp-a.service" /etc/systemd/system/
+cp "$REPO_ROOT/deploy/systemd/whatsapp-mcp-b.service" /etc/systemd/system/
 cp "$REPO_ROOT/deploy/systemd/mcp-oauth-shim-whatsapp.service" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable whatsapp-bridge.service whatsapp-mcp.service mcp-oauth-shim-whatsapp.service
-systemctl restart whatsapp-bridge.service
+systemctl enable whatsapp-bridge-a whatsapp-bridge-b whatsapp-mcp-a whatsapp-mcp-b mcp-oauth-shim-whatsapp
+
+systemctl restart whatsapp-bridge-a
 sleep 2
-# Inject bridge token into mcp.env after first start
-if [[ -f "$STATE_DIR/store/.bridge-token" ]]; then
-  chmod 600 "$STATE_DIR/store/.bridge-token"
-  chown whatsappmcp:whatsappmcp "$STATE_DIR/store/.bridge-token"
-  TOKEN="$(tr -d '\n' < "$STATE_DIR/store/.bridge-token")"
-  if grep -q '^WHATSAPP_BRIDGE_TOKEN=' /etc/whatsapp-mcp/mcp.env; then
-    sed -i "s|^WHATSAPP_BRIDGE_TOKEN=.*|WHATSAPP_BRIDGE_TOKEN=$TOKEN|" /etc/whatsapp-mcp/mcp.env
-  else
-    echo "WHATSAPP_BRIDGE_TOKEN=$TOKEN" >> /etc/whatsapp-mcp/mcp.env
-  fi
-fi
-systemctl restart whatsapp-mcp.service
-systemctl restart mcp-oauth-shim-whatsapp.service
+sync_bridge_token a
+systemctl restart whatsapp-mcp-a
+
+systemctl restart whatsapp-bridge-b
+sleep 2
+sync_bridge_token b
+systemctl restart whatsapp-mcp-b
+
+systemctl restart mcp-oauth-shim-whatsapp
 
 echo "==> nginx (additive; mail vhost untouched)"
 cp "$REPO_ROOT/deploy/nginx/mcp-whatsapp.bwb.pt.conf" /etc/nginx/sites-available/mcp-whatsapp.bwb.pt.conf
-# Prefer shim-health if MCP has no /health
-sed -i 's|proxy_pass http://127.0.0.1:18000/health;|proxy_pass http://127.0.0.1:18001/shim-health;|' \
-  /etc/nginx/sites-available/mcp-whatsapp.bwb.pt.conf || true
 ln -sfn /etc/nginx/sites-available/mcp-whatsapp.bwb.pt.conf /etc/nginx/sites-enabled/mcp-whatsapp.bwb.pt.conf
 
 if [[ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
@@ -130,19 +181,19 @@ server {
 EOF
   nginx -t && systemctl reload nginx
   certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
-  # Restore hardened vhost after certbot
   cp "$REPO_ROOT/deploy/nginx/mcp-whatsapp.bwb.pt.conf" /etc/nginx/sites-available/mcp-whatsapp.bwb.pt.conf
-  sed -i 's|proxy_pass http://127.0.0.1:18000/health;|proxy_pass http://127.0.0.1:18001/shim-health;|' \
-    /etc/nginx/sites-available/mcp-whatsapp.bwb.pt.conf || true
 fi
 
 nginx -t
 systemctl reload nginx
 
-echo "==> Regression mail"
-systemctl is-active claude-mail-mcp mcp-oauth-shim-mail
+echo "==> Regression mail + smoke WA"
+systemctl is-active claude-mail-mcp mcp-oauth-shim-mail whatsapp-bridge-a whatsapp-mcp-a whatsapp-bridge-b whatsapp-mcp-b mcp-oauth-shim-whatsapp
 curl -fsS -o /dev/null -w "mail_health=%{http_code}\n" https://mcp-mail.bwb.pt/health || true
 curl -fsS -o /dev/null -w "wa_shim=%{http_code}\n" "https://$DOMAIN/shim-health" || true
+curl -s -o /dev/null -w "wa_a_mcp=%{http_code}\n" -X POST "https://$DOMAIN/a/mcp" || true
+curl -s -o /dev/null -w "wa_b_mcp=%{http_code}\n" -X POST "https://$DOMAIN/b/mcp" || true
 
-echo "==> Done. Pair WhatsApp via: journalctl -u whatsapp-bridge -f"
-echo "    Admin: https://$DOMAIN/admin"
+echo "==> Done. Admin: https://$DOMAIN/admin (2 cartões)"
+echo "    Claude A: https://$DOMAIN/a/mcp"
+echo "    Claude B: https://$DOMAIN/b/mcp"

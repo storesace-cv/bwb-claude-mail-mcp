@@ -29,10 +29,11 @@ export const config = {
   injectUpstreamBearer:
     (process.env.INJECT_UPSTREAM_BEARER ?? (isWhatsapp ? "false" : "true")).toLowerCase() ===
     "true",
+  /** @deprecated prefer per-account bridgeUrl from wa-accounts */
   bridgeUrl: (process.env.BRIDGE_URL ?? "http://127.0.0.1:18080").replace(/\/$/, ""),
   get bridgeTokenFile() {
     return (
-      process.env.BRIDGE_TOKEN_FILE ?? path.join(this.stateDir, "store", ".bridge-token")
+      process.env.BRIDGE_TOKEN_FILE ?? path.join(this.stateDir, "accounts", "a", "store", ".bridge-token")
     );
   },
   get accountsFile() {

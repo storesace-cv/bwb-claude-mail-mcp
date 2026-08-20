@@ -1,7 +1,12 @@
 import { promises as fs } from "node:fs";
-import path from "node:path";
 import QRCode from "qrcode";
-import { config } from "../config.js";
+import {
+  bridgeTokenPath,
+  listWhatsappAccounts,
+  publicMcpUrl,
+  qrCodePath,
+  type WhatsappAccount,
+} from "./wa-accounts.js";
 
 export interface ProbeResult {
   ok: boolean;
@@ -11,7 +16,9 @@ export interface ProbeResult {
 
 export type PairingState = "paired" | "awaiting_qr" | "starting" | "unknown";
 
-export interface WhatsappStatus {
+export interface WhatsappAccountStatus {
+  account: WhatsappAccount;
+  publicMcpUrl: string;
   bridge: ProbeResult;
   mcp: ProbeResult;
   bridgeTokenPresent: boolean;
@@ -21,22 +28,18 @@ export interface WhatsappStatus {
   connected: boolean;
 }
 
-async function readBridgeToken(): Promise<string | null> {
+async function readBridgeToken(account: WhatsappAccount): Promise<string | null> {
   try {
-    const t = (await fs.readFile(config.bridgeTokenFile, "utf8")).trim();
+    const t = (await fs.readFile(bridgeTokenPath(account), "utf8")).trim();
     return t || null;
   } catch {
     return null;
   }
 }
 
-function qrCodePath(): string {
-  return process.env.WHATSAPP_QR_FILE ?? path.join(config.stateDir, "store", "qr.code");
-}
-
-async function readQrCode(): Promise<string | null> {
+async function readQrCode(account: WhatsappAccount): Promise<string | null> {
   try {
-    const code = (await fs.readFile(qrCodePath(), "utf8")).trim();
+    const code = (await fs.readFile(qrCodePath(account), "utf8")).trim();
     return code || null;
   } catch {
     return null;
@@ -60,8 +63,8 @@ async function probe(url: string, init?: RequestInit): Promise<ProbeResult> {
   }
 }
 
-async function probeMcp(): Promise<ProbeResult> {
-  const base = config.upstreamMcpUrl.replace(/\/$/, "");
+async function probeMcp(mcpBase: string): Promise<ProbeResult> {
+  const base = mcpBase.replace(/\/$/, "");
   const health = await probe(`${base}/health`);
   if (health.ok) return health;
 
@@ -86,15 +89,17 @@ function parseConnected(bridge: ProbeResult): boolean {
   }
 }
 
-export async function getWhatsappStatus(): Promise<WhatsappStatus> {
-  const token = await readBridgeToken();
+export async function getWhatsappAccountStatus(
+  account: WhatsappAccount
+): Promise<WhatsappAccountStatus> {
+  const token = await readBridgeToken(account);
   const bridgeHeaders: Record<string, string> = {};
   if (token) bridgeHeaders.Authorization = `Bearer ${token}`;
 
   const [bridge, mcp, qrCode] = await Promise.all([
-    probe(`${config.bridgeUrl}/api/health`, { headers: bridgeHeaders }),
-    probeMcp(),
-    readQrCode(),
+    probe(`${account.bridgeUrl}/api/health`, { headers: bridgeHeaders }),
+    probeMcp(account.mcpUrl),
+    readQrCode(account),
   ]);
 
   const connected = parseConnected(bridge);
@@ -119,6 +124,8 @@ export async function getWhatsappStatus(): Promise<WhatsappStatus> {
   }
 
   return {
+    account,
+    publicMcpUrl: publicMcpUrl(account),
     bridge,
     mcp,
     bridgeTokenPresent: Boolean(token),
@@ -127,4 +134,15 @@ export async function getWhatsappStatus(): Promise<WhatsappStatus> {
     qrDataUrl,
     connected,
   };
+}
+
+export async function getAllWhatsappStatuses(): Promise<WhatsappAccountStatus[]> {
+  const accounts = await listWhatsappAccounts();
+  return Promise.all(accounts.map((a) => getWhatsappAccountStatus(a)));
+}
+
+/** @deprecated use getAllWhatsappStatuses — kept for single-account callers */
+export async function getWhatsappStatus(): Promise<WhatsappAccountStatus> {
+  const all = await getAllWhatsappStatuses();
+  return all[0]!;
 }

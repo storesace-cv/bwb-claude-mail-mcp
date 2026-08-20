@@ -1,0 +1,24 @@
+{
+  "accounts": [
+    {
+      "id": "a",
+      "label": "Pessoal",
+      "bridgeUrl": "http://127.0.0.1:18080",
+      "mcpUrl": "http://127.0.0.1:18000",
+      "storeDir": "/var/lib/whatsapp-mcp/accounts/a/store",
+      "publicMcpPath": "/a/mcp",
+      "bridgeUnit": "whatsapp-bridge-a",
+      "mcpUnit": "whatsapp-mcp-a"
+    },
+    {
+      "id": "b",
+      "label": "Negócio",
+      "bridgeUrl": "http://127.0.0.1:18082",
+      "mcpUrl": "http://127.0.0.1:18002",
+      "storeDir": "/var/lib/whatsapp-mcp/accounts/b/store",
+      "publicMcpPath": "/b/mcp",
+      "bridgeUnit": "whatsapp-bridge-b",
+      "mcpUnit": "whatsapp-mcp-b"
+    }
+  ]
+}
