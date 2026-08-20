@@ -79,7 +79,10 @@ export async function requireAdminSession(
     }
     (req as Request & { adminEmail: string; mustChangePassword: boolean }).adminEmail = admin.email;
     (req as Request & { mustChangePassword: boolean }).mustChangePassword = admin.mustChangePassword;
-    if (admin.mustChangePassword && !req.path.startsWith("/admin/change-password")) {
+    // Mounted at /admin → req.path is "/change-password", not "/admin/change-password"
+    const onChangePassword =
+      req.path === "/change-password" || req.path.startsWith("/change-password/");
+    if (admin.mustChangePassword && !onChangePassword) {
       res.redirect("/admin/change-password");
       return;
     }
