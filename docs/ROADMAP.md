@@ -8,8 +8,9 @@
 - [x] Custom OAuth 2.1 + DCR + PKCE shim on `:3221` (loopback)
 - [x] Admin backoffice at `/admin` (multi-account CRUD, profile, force password change)
 - [x] nginx + Let's Encrypt for `https://mcp-mail.bwb.pt`
-- [x] systemd hardening for both services
+- [x] systemd units (Protect* hardening; SystemCallFilter relaxed for Node on 24.04)
 - [x] Repo `storesace-cv/bwb-claude-mail-mcp` with deploy scripts
+- [x] Smoke tests: `/health`, `/mcp` 401, OAuth metadata, admin bootstrap
 
 ## Next
 
