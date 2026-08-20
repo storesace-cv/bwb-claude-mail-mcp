@@ -29,6 +29,9 @@ rm -rf "$WA_DIR/whatsapp-bridge/store"
 ln -sfn "$STATE_DIR/store" "$WA_DIR/whatsapp-bridge/store"
 chown -h whatsappmcp:whatsappmcp "$WA_DIR/whatsapp-bridge/store"
 
+echo "==> Patch bridge (QR → store/qr.code for /admin)"
+python3 "$REPO_ROOT/deploy/patches/patch-whatsapp-bridge-qr.py" "$WA_DIR/whatsapp-bridge/main.go"
+
 echo "==> Build bridge"
 sudo -u whatsappmcp env PATH="/usr/local/go/bin:$PATH" HOME="$STATE_DIR" \
   bash -lc "cd '$WA_DIR/whatsapp-bridge' && go build -o '$WA_DIR/bin/whatsapp-bridge' ."

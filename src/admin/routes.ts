@@ -118,6 +118,33 @@ adminRouter.get("/", requireAdminSession, async (req, res) => {
     const status = await getWhatsappStatus();
     const mark = (ok: boolean) =>
       ok ? `<span class="badge">OK</span>` : `<span class="badge">DOWN</span>`;
+    const pairBadge =
+      status.pairingState === "paired"
+        ? `<span class="badge">Associado</span>`
+        : status.pairingState === "awaiting_qr"
+          ? `<span class="badge">À espera de scan</span>`
+          : `<span class="badge">A iniciar…</span>`;
+
+    let pairingBlock: string;
+    if (status.pairingState === "paired") {
+      pairingBlock = `<h2>Conta WhatsApp</h2>
+        <p>${pairBadge} Sessão activa. A API REST da bridge está disponível em loopback.</p>
+        <p class="muted">Para re-associar outro número: apaga a sessão em <span class="mono">store/whatsapp.db</span> e reinicia <span class="mono">whatsapp-bridge</span> (faz backup antes).</p>`;
+    } else if (status.qrDataUrl) {
+      pairingBlock = `<h2>Associar conta</h2>
+        <p>${pairBadge} Escaneia este QR no telemóvel: WhatsApp → Definições → Dispositivos ligados → Ligar dispositivo.</p>
+        <div style="display:flex;justify-content:center;padding:1.25rem 0">
+          <img src="${status.qrDataUrl}" width="280" height="280" alt="QR code WhatsApp" style="border-radius:12px;background:#fff;padding:8px;box-shadow:var(--shadow)" />
+        </div>
+        <p class="muted">A página actualiza sozinha a cada 5s. O código expira e é renovado automaticamente.</p>
+        <script>setTimeout(function(){ location.reload(); }, 5000);</script>`;
+    } else {
+      pairingBlock = `<h2>Associar conta</h2>
+        <p>${pairBadge} Ainda sem QR — a bridge pode estar a arrancar ou a renovar o código.</p>
+        <p class="muted">Se demorar mais de ~30s, verifica <span class="mono">journalctl -u whatsapp-bridge -f</span> e reinicia o serviço.</p>
+        <script>setTimeout(function(){ location.reload(); }, 5000);</script>`;
+    }
+
     res.type("html").send(
       layout(
         "Estado",
@@ -129,8 +156,12 @@ adminRouter.get("/", requireAdminSession, async (req, res) => {
             <tbody>
               <tr>
                 <td>WhatsApp Bridge</td>
-                <td>${mark(status.bridge.ok)}</td>
-                <td class="mono muted">${esc(status.bridge.detail)}</td>
+                <td>${mark(status.bridge.ok || status.pairingState === "awaiting_qr")}</td>
+                <td class="mono muted">${esc(
+                  status.pairingState === "awaiting_qr" && !status.bridge.ok
+                    ? "Processo a correr — à espera de pair (API sobe depois do scan)"
+                    : status.bridge.detail
+                )}</td>
               </tr>
               <tr>
                 <td>MCP Python</td>
@@ -144,10 +175,7 @@ adminRouter.get("/", requireAdminSession, async (req, res) => {
               </tr>
             </tbody>
           </table>
-          <h2>Pairing</h2>
-          <p class="muted">O QR code aparece na consola da bridge (SSH/tmux). No telemóvel: WhatsApp → Definições → Dispositivos ligados → Ligar dispositivo.</p>
-          <pre class="mono" style="white-space:pre-wrap;background:var(--fill);padding:0.85rem;border-radius:10px;font-size:0.8125rem">sudo -u whatsappmcp tmux attach -t wa-pair
-# ou: journalctl -u whatsapp-bridge -f</pre>
+          ${pairingBlock}
           <p class="muted">URL público: <span class="mono">${esc(config.publicUrl)}</span> · MCP: <span class="mono">${esc(config.publicUrl)}/mcp</span></p>
         </div>`,
         { flash }
