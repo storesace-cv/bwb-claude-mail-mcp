@@ -150,16 +150,30 @@ function accountForm(opts: {
   error?: string;
 }): string {
   const v = opts.values;
-  const idReadonly = opts.mode === "edit" ? "readonly" : "";
+  const tipFrom =
+    "Endereço de email que aparece no campo «De» quando o Claude envia mensagens por esta conta. Usa normalmente o mesmo endereço IMAP (ex.: jorge.peixinho@bwb.pt).";
+  const tipFromName =
+    "Nome visível do remetente junto do email (ex.: Jorge Peixinho). É o que o destinatário vê antes do endereço. Opcional — se vazio, só aparece o email.";
+  const idField =
+    opts.mode === "edit"
+      ? `<div class="row">
+           <label>ID<input name="id" readonly value="${esc(v.id ?? "")}" /></label>
+           <label>Label<input name="label" required value="${esc(v.label ?? "")}" /></label>
+         </div>`
+      : `<div class="row">
+           <label>Label<input name="label" required value="${esc(v.label ?? "")}" placeholder="Ex.: Trabalho BWB" /></label>
+           <label>ID (automático)
+             <input name="id" id="account-id" readonly value="${esc(v.id ?? "")}" placeholder="gerado a partir do label / email" />
+           </label>
+         </div>
+         <p class="muted" style="margin:0;font-size:0.8125rem">O ID é gerado automaticamente — não precisas de o inventar.</p>`;
+
   return `${adminHeader("accounts")}
   <h2>${opts.mode === "new" ? "Nova conta" : "Editar conta"}</h2>
   ${opts.error ? `<div class="error">${esc(opts.error)}</div>` : ""}
   <div id="test-result" hidden class="flash" style="display:none"></div>
   <form id="account-form" class="stack panel" method="post" action="${esc(opts.action)}">
-    <div class="row">
-      <label>ID (slug)<input name="id" required pattern="[a-z0-9][a-z0-9_-]{0,31}" ${idReadonly} value="${esc(v.id ?? "")}" /></label>
-      <label>Label<input name="label" required value="${esc(v.label ?? "")}" /></label>
-    </div>
+    ${idField}
     <label><input type="checkbox" name="default" ${v.default === "on" || v.default === "true" ? "checked" : ""} /> Conta default</label>
     <h2>IMAP</h2>
     <div class="row">
@@ -167,7 +181,7 @@ function accountForm(opts: {
       <label>Porta<input name="imap_port" type="number" required value="${esc(v.imap_port ?? "993")}" /></label>
     </div>
     <div class="row">
-      <label>User<input name="imap_user" required value="${esc(v.imap_user ?? "")}" /></label>
+      <label>User<input name="imap_user" id="imap_user" required value="${esc(v.imap_user ?? "")}" /></label>
       <label>Password<input name="imap_pass" type="password" ${opts.mode === "new" ? "required" : ""} placeholder="${opts.mode === "edit" ? "deixar vazio para manter" : ""}" autocomplete="new-password" /></label>
     </div>
     <h2>SMTP</h2>
@@ -181,13 +195,18 @@ function accountForm(opts: {
     </div>
     <h2>Mail</h2>
     <div class="row">
-      <label>Default From<input name="default_from" required value="${esc(v.default_from ?? "")}" /></label>
-      <label>From name<input name="default_from_name" value="${esc(v.default_from_name ?? "")}" /></label>
+      <label class="with-tip" data-tip="${esc(tipFrom)}">Default From
+        <input name="default_from" id="default_from" required value="${esc(v.default_from ?? "")}" placeholder="jorge.peixinho@bwb.pt" />
+      </label>
+      <label class="with-tip" data-tip="${esc(tipFromName)}">From name
+        <input name="default_from_name" value="${esc(v.default_from_name ?? "")}" placeholder="Jorge Peixinho" />
+      </label>
     </div>
     <div class="row">
-      <label>Drafts folder<input name="drafts_folder" value="${esc(v.drafts_folder ?? "Drafts")}" /></label>
-      <label>Sent folder<input name="sent_folder" value="${esc(v.sent_folder ?? "Sent")}" /></label>
+      <label>Drafts folder<input name="drafts_folder" id="drafts_folder" value="${esc(v.drafts_folder ?? "Drafts")}" /></label>
+      <label>Sent folder<input name="sent_folder" id="sent_folder" value="${esc(v.sent_folder ?? "Sent")}" /></label>
     </div>
+    <p class="muted" style="margin:0;font-size:0.8125rem">Ao testar a configuração, as pastas Drafts/Sent são verificadas no servidor IMAP e corrigidas automaticamente se os nomes não coincidirem.</p>
     <h2>CalDAV (opcional)</h2>
     <label>URL<input name="caldav_url" value="${esc(v.caldav_url ?? "")}" /></label>
     <div class="row">
@@ -205,6 +224,40 @@ function accountForm(opts: {
     var form = document.getElementById("account-form");
     var btn = document.getElementById("btn-test-conn");
     var out = document.getElementById("test-result");
+    var idInput = document.getElementById("account-id");
+    var labelInput = form && form.querySelector('input[name="label"]');
+    var imapUser = document.getElementById("imap_user");
+    var defaultFrom = document.getElementById("default_from");
+    var smtpUser = form && form.querySelector('input[name="smtp_user"]');
+
+    function slugify(s) {
+      return String(s || "")
+        .normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
+        .toLowerCase()
+        .replace(/@.*$/, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 24) || "account";
+    }
+    function refreshId() {
+      if (!idInput) return;
+      var seed = (labelInput && labelInput.value) || (imapUser && imapUser.value) || (defaultFrom && defaultFrom.value) || "";
+      idInput.value = slugify(seed);
+    }
+    if (idInput) {
+      if (labelInput) labelInput.addEventListener("input", refreshId);
+      if (imapUser) imapUser.addEventListener("input", refreshId);
+      if (defaultFrom) defaultFrom.addEventListener("input", refreshId);
+      refreshId();
+    }
+    if (imapUser && defaultFrom) {
+      imapUser.addEventListener("change", function () {
+        if (!defaultFrom.value) defaultFrom.value = imapUser.value;
+        if (smtpUser && !smtpUser.value) smtpUser.value = imapUser.value;
+        refreshId();
+      });
+    }
+
     if (!form || !btn || !out) return;
     btn.addEventListener("click", async function () {
       btn.disabled = true;
@@ -224,11 +277,22 @@ function accountForm(opts: {
         });
         var data = await res.json();
         if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        if (data.folders) {
+          var df = document.getElementById("drafts_folder");
+          var sf = document.getElementById("sent_folder");
+          if (df && data.folders.drafts) df.value = data.folders.drafts;
+          if (sf && data.folders.sent) sf.value = data.folders.sent;
+        }
         out.className = data.ok ? "flash" : "error";
+        var folderNote = "";
+        if (data.folders && (data.folders.draftsChanged || data.folders.sentChanged)) {
+          folderNote = "<br>Pastas actualizadas no formulário a partir do IMAP.";
+        }
         out.innerHTML =
           "<strong>" + (data.ok ? "Configuração válida" : "Falha no teste") + "</strong><br>" +
           "IMAP: " + (data.imap && data.imap.ok ? "OK" : "Erro") + " — " + (data.imap && data.imap.detail ? data.imap.detail : "") + "<br>" +
-          "SMTP: " + (data.smtp && data.smtp.ok ? "OK" : "Erro") + " — " + (data.smtp && data.smtp.detail ? data.smtp.detail : "");
+          "SMTP: " + (data.smtp && data.smtp.ok ? "OK" : "Erro") + " — " + (data.smtp && data.smtp.detail ? data.smtp.detail : "") +
+          folderNote;
       } catch (e) {
         out.className = "error";
         out.textContent = e && e.message ? e.message : String(e);
@@ -270,7 +334,7 @@ adminRouter.post("/accounts/test", requireAdminSession, async (req, res) => {
     const body = req.body as Record<string, unknown>;
     const id = String(body.id ?? "").trim();
     const existing = id ? await getAccount(id) : undefined;
-    // Allow empty passwords on edit by reusing stored ones; for brand-new tests require them.
+    const all = await listAccounts();
     const account = validateAccountInput(
       {
         ...body,
@@ -279,9 +343,12 @@ adminRouter.post("/accounts/test", requireAdminSession, async (req, res) => {
           String(body.default_from ?? "").trim() ||
           String(body.imap_user ?? "").trim() ||
           "test@example.com",
-        id: id && /^[a-z0-9][a-z0-9_-]{0,31}$/.test(id) ? id : "test",
       },
-      existing ? { keepPass: existing } : undefined
+      {
+        keepPass: existing,
+        autoId: true,
+        existingIds: all.map((a) => a.id),
+      }
     );
     const result = await testMailConnections(account);
     res.json(result);
@@ -296,7 +363,11 @@ adminRouter.post("/accounts/new", requireAdminSession, async (req, res) => {
     return;
   }
   try {
-    const account = validateAccountInput(req.body as Record<string, unknown>);
+    const all = await listAccounts();
+    const account = validateAccountInput(req.body as Record<string, unknown>, {
+      autoId: true,
+      existingIds: all.map((a) => a.id),
+    });
     await upsertAccount(account);
     res.redirect("/admin?ok=Conta+criada");
   } catch (err) {

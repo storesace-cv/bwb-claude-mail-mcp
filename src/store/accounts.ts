@@ -48,6 +48,26 @@ export interface AccountsFile {
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
+export function generateAccountId(seed: string, existingIds: string[]): string {
+  let base = seed
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/@.*$/, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
+  if (!base) base = "account";
+  if (!/^[a-z0-9]/.test(base)) base = `a${base}`.slice(0, 24);
+  let id = base.slice(0, 32);
+  let n = 2;
+  while (existingIds.includes(id)) {
+    const suffix = `-${n++}`;
+    id = `${base.slice(0, Math.max(1, 32 - suffix.length))}${suffix}`;
+  }
+  return id;
+}
+
 async function readFile(): Promise<AccountsFile> {
   try {
     const raw = await fs.readFile(config.accountsFile, "utf8");
@@ -80,8 +100,19 @@ export async function getAccount(id: string): Promise<Account | undefined> {
   return (await readFile()).accounts.find((a) => a.id === id);
 }
 
-export function validateAccountInput(raw: Record<string, unknown>, opts?: { keepPass?: Account }): Account {
-  const id = String(raw.id ?? "").trim();
+export function validateAccountInput(
+  raw: Record<string, unknown>,
+  opts?: { keepPass?: Account; existingIds?: string[]; autoId?: boolean }
+): Account {
+  let id = String(raw.id ?? "").trim();
+  if (!id && opts?.autoId) {
+    const seed =
+      String(raw.label ?? "").trim() ||
+      String(raw.imap_user ?? "").trim() ||
+      String(raw.default_from ?? "").trim() ||
+      "account";
+    id = generateAccountId(seed, opts.existingIds ?? []);
+  }
   if (!ID_PATTERN.test(id)) {
     throw new Error(`Invalid id (expected ${ID_PATTERN})`);
   }

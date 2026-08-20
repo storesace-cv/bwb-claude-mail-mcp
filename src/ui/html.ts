@@ -210,6 +210,31 @@ export function layout(title: string, body: string, opts?: { flash?: string; err
       vertical-align: middle;
     }
     .inline-form { display: inline; }
+    label.with-tip { position: relative; }
+    label.with-tip::after {
+      content: " ⓘ";
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 0.85em;
+    }
+    label.with-tip:hover::before,
+    label.with-tip:focus-within::before {
+      content: attr(data-tip);
+      position: absolute;
+      left: 0;
+      top: calc(100% + 6px);
+      z-index: 20;
+      width: min(320px, 80vw);
+      padding: 0.75rem 0.9rem;
+      background: #1d1d1f;
+      color: #f5f5f7;
+      font-size: 0.8125rem;
+      font-weight: 400;
+      line-height: 1.4;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>

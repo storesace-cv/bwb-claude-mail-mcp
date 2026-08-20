@@ -38,9 +38,6 @@ MemoryMax=512M
 TasksMax=128
 LimitNOFILE=4096
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-IPAddressDeny=any
-IPAddressAllow=127.0.0.1/32
-IPAddressAllow=::1/128
 
 [Install]
 WantedBy=multi-user.target
