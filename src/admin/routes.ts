@@ -119,8 +119,8 @@ adminRouter.get("/", requireAdminSession, async (req, res) => {
       <td class="mono">${esc(a.imap.host)}:${a.imap.port}</td>
       <td>
         <a href="/admin/accounts/${encodeURIComponent(a.id)}">Editar</a>
-        ${a.default ? "" : ` · <form style="display:inline" method="post" action="/admin/accounts/${encodeURIComponent(a.id)}/default"><button class="secondary" type="submit">Default</button></form>`}
-        · <form style="display:inline" method="post" action="/admin/accounts/${encodeURIComponent(a.id)}/delete" onsubmit="return confirm('Apagar conta?')"><button class="danger" type="submit">Apagar</button></form>
+        ${a.default ? "" : ` · <form class="inline-form" method="post" action="/admin/accounts/${encodeURIComponent(a.id)}/default"><button class="secondary" type="submit">Default</button></form>`}
+        · <form class="inline-form" method="post" action="/admin/accounts/${encodeURIComponent(a.id)}/delete" onsubmit="return confirm('Apagar conta?')"><button class="danger" type="submit">Apagar</button></form>
       </td>
     </tr>`
     )

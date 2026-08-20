@@ -25,13 +25,22 @@ async function main(): Promise<void> {
 
   app.get("/", (_req, res) => {
     res.type("html").send(
-      `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"><title>MCP Mail</title></head>
-      <body style="font-family:system-ui;background:#0f1419;color:#e8eef4;padding:2rem">
-      <h1>MCP Mail · bwb.pt</h1>
-      <p><a href="/admin" style="color:#3d8bfd">Backoffice</a> ·
-      <a href="/health" style="color:#3d8bfd">Health</a> ·
-      <a href="/.well-known/oauth-authorization-server" style="color:#3d8bfd">OAuth metadata</a></p>
-      </body></html>`
+      `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>MCP Mail</title>
+      <style>
+        body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+          background:#f5f5f7;color:#1d1d1f;-webkit-font-smoothing:antialiased}
+        main{text-align:center;padding:2rem}
+        h1{font-size:2rem;font-weight:600;letter-spacing:-.03em;margin:0 0 .5rem}
+        p{color:#86868b;margin:0 0 1.5rem}
+        a{color:#1d1d1f;margin:0 .65rem;text-decoration:none;font-weight:500}
+        a:hover{text-decoration:underline;text-underline-offset:3px}
+      </style></head>
+      <body><main>
+        <h1>MCP Mail</h1>
+        <p>bwb.pt</p>
+        <p><a href="/admin">Backoffice</a><a href="/health">Health</a><a href="/.well-known/oauth-authorization-server">OAuth</a></p>
+      </main></body></html>`
     );
   });
 

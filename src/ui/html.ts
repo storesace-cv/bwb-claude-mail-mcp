@@ -15,64 +15,201 @@ export function layout(title: string, body: string, opts?: { flash?: string; err
   <title>${esc(title)} · MCP Mail</title>
   <style>
     :root {
-      --bg: #0f1419;
-      --surface: #1a222c;
-      --text: #e8eef4;
-      --muted: #8b9aab;
-      --accent: #3d8bfd;
-      --danger: #e35d5d;
-      --ok: #3cbc8d;
-      --border: #2a3542;
-      --font: "IBM Plex Sans", "Segoe UI", sans-serif;
-      --mono: "IBM Plex Mono", ui-monospace, monospace;
+      --bg: #f5f5f7;
+      --surface: #ffffff;
+      --text: #1d1d1f;
+      --muted: #86868b;
+      --accent: #1d1d1f;
+      --accent-soft: #424245;
+      --border: #d2d2d7;
+      --border-soft: #e8e8ed;
+      --fill: #fbfbfd;
+      --fill-hover: #f0f0f2;
+      --danger: #6e6e73;
+      --ok: #6e6e73;
+      --shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+      --radius: 12px;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+        "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --mono: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, monospace;
     }
     * { box-sizing: border-box; }
     body {
-      margin: 0; min-height: 100vh;
+      margin: 0;
+      min-height: 100vh;
       font-family: var(--font);
-      background:
-        radial-gradient(1200px 600px at 10% -10%, #1c2a3d 0%, transparent 55%),
-        radial-gradient(900px 500px at 100% 0%, #18241f 0%, transparent 50%),
-        var(--bg);
+      background: var(--bg);
       color: var(--text);
-      line-height: 1.45;
+      line-height: 1.47;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .wrap { max-width: 920px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    a { color: var(--accent-soft); text-decoration: none; }
+    a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 2.5rem 1.25rem 5rem; }
     header.app {
-      display: flex; justify-content: space-between; align-items: baseline;
-      gap: 1rem; margin-bottom: 2rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border-soft);
     }
-    header.app h1 { font-size: 1.25rem; margin: 0; letter-spacing: -0.02em; }
-    header.app nav { display: flex; gap: 1rem; font-size: 0.95rem; color: var(--muted); }
-    h2 { font-size: 1.1rem; margin: 0 0 1rem; }
-    .flash { background: #163528; color: #b7f0d5; padding: 0.75rem 1rem; margin-bottom: 1rem; border-left: 3px solid var(--ok); }
-    .error { background: #3a1c1c; color: #ffc9c9; padding: 0.75rem 1rem; margin-bottom: 1rem; border-left: 3px solid var(--danger); }
-    form.stack { display: grid; gap: 0.85rem; }
-    label { display: grid; gap: 0.35rem; font-size: 0.85rem; color: var(--muted); }
+    header.app h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin: 0;
+      letter-spacing: -0.03em;
+    }
+    header.app nav {
+      display: flex;
+      gap: 1.25rem;
+      font-size: 0.9375rem;
+      color: var(--muted);
+    }
+    header.app nav a.active { color: var(--text); font-weight: 500; }
+    h2 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 1.5rem 0 0.85rem;
+      letter-spacing: -0.02em;
+    }
+    h2:first-child { margin-top: 0; }
+    .flash, .error {
+      background: var(--surface);
+      color: var(--text);
+      padding: 0.85rem 1rem;
+      margin-bottom: 1.25rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 0.9375rem;
+    }
+    .flash { box-shadow: inset 3px 0 0 #86868b; }
+    .error { box-shadow: inset 3px 0 0 #1d1d1f; }
+    form.stack { display: grid; gap: 1rem; }
+    label {
+      display: grid;
+      gap: 0.4rem;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: -0.01em;
+    }
+    label:has(input[type="checkbox"]) {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-size: 0.9375rem;
+      color: var(--text);
+      font-weight: 400;
+    }
     input, select, textarea {
-      font: inherit; color: var(--text); background: var(--surface);
-      border: 1px solid var(--border); padding: 0.65rem 0.75rem; border-radius: 0;
+      font: inherit;
+      font-size: 1rem;
+      color: var(--text);
+      background: var(--fill);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.7rem 0.85rem;
+      transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
     }
-    input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
+    input:hover, select:hover, textarea:hover { background: var(--surface); }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      background: var(--surface);
+      border-color: #86868b;
+      box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+    }
+    input[type="checkbox"] {
+      width: 1.05rem;
+      height: 1.05rem;
+      padding: 0;
+      accent-color: #1d1d1f;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
-    .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.5rem; }
-    button, .btn {
-      font: inherit; cursor: pointer; border: 1px solid var(--accent);
-      background: var(--accent); color: #041018; padding: 0.55rem 1rem;
+    .actions {
+      display: flex;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+      margin-top: 0.35rem;
+      align-items: center;
     }
-    button.secondary, .btn.secondary { background: transparent; color: var(--text); border-color: var(--border); }
-    button.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
-    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
-    th, td { text-align: left; padding: 0.7rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
-    th { color: var(--muted); font-weight: 500; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
-    .mono { font-family: var(--mono); font-size: 0.85rem; }
+    button, .btn {
+      font: inherit;
+      font-size: 0.9375rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: var(--text);
+      color: #fff;
+      padding: 0.6rem 1.1rem;
+      border-radius: 980px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s ease, opacity 0.15s ease;
+    }
+    button:hover, .btn:hover { background: #424245; color: #fff; text-decoration: none; }
+    button.secondary, .btn.secondary {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--border);
+    }
+    button.secondary:hover, .btn.secondary:hover { background: var(--fill-hover); color: var(--text); }
+    button.danger {
+      background: transparent;
+      color: var(--muted);
+      border-color: var(--border);
+    }
+    button.danger:hover { background: var(--fill-hover); color: var(--text); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+    th, td {
+      text-align: left;
+      padding: 0.9rem 0.55rem;
+      border-bottom: 1px solid var(--border-soft);
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.75rem;
+      letter-spacing: 0.02em;
+      text-transform: none;
+    }
+    tr:last-child td { border-bottom: none; }
+    .mono { font-family: var(--mono); font-size: 0.8125rem; color: var(--accent-soft); }
     .muted { color: var(--muted); }
-    .panel { background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--border); padding: 1.25rem; }
-    .narrow { max-width: 420px; margin: 10vh auto; }
-    .badge { display: inline-block; font-size: 0.75rem; padding: 0.15rem 0.45rem; border: 1px solid var(--ok); color: var(--ok); }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      box-shadow: var(--shadow);
+    }
+    .narrow {
+      max-width: 400px;
+      margin: 12vh auto;
+    }
+    .narrow h2 {
+      font-size: 1.5rem;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.35rem;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.6875rem;
+      font-weight: 500;
+      padding: 0.15rem 0.5rem;
+      border-radius: 980px;
+      background: var(--fill-hover);
+      color: var(--accent-soft);
+      border: none;
+      vertical-align: middle;
+    }
+    .inline-form { display: inline; }
   </style>
 </head>
 <body>
@@ -87,10 +224,10 @@ export function layout(title: string, body: string, opts?: { flash?: string; err
 
 export function adminHeader(active: "accounts" | "profile"): string {
   return `<header class="app">
-    <h1>MCP Mail · Admin</h1>
+    <h1>MCP Mail</h1>
     <nav>
-      <a href="/admin"${active === "accounts" ? ' style="color:var(--text)"' : ""}>Contas</a>
-      <a href="/admin/profile"${active === "profile" ? ' style="color:var(--text)"' : ""}>Perfil</a>
+      <a href="/admin" class="${active === "accounts" ? "active" : ""}">Contas</a>
+      <a href="/admin/profile" class="${active === "profile" ? "active" : ""}">Perfil</a>
       <a href="/admin/logout">Sair</a>
     </nav>
   </header>`;
