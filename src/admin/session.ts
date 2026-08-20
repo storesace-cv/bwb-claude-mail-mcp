@@ -91,10 +91,37 @@ export async function requireAdminSession(
 }
 
 export function checkCsrf(req: Request): boolean {
-  const origin = req.get("origin");
-  const referer = req.get("referer");
   const expected = config.publicUrl;
-  if (origin) return origin === expected;
-  if (referer) return referer.startsWith(expected + "/") || referer === expected;
+  const expectedHost = new URL(expected).host;
+
+  const origin = req.get("origin");
+  if (origin) {
+    try {
+      return new URL(origin).origin === expected;
+    } catch {
+      return false;
+    }
+  }
+
+  const referer = req.get("referer");
+  if (referer) {
+    try {
+      return new URL(referer).origin === expected;
+    } catch {
+      return false;
+    }
+  }
+
+  // Classic HTML form POSTs often omit Origin; modern browsers still send Sec-Fetch-Site.
+  const site = (req.get("sec-fetch-site") ?? "").toLowerCase();
+  if (site === "same-origin" || site === "same-site") return true;
+
+  // Final fallback for same-host form posts behind nginx (X-Forwarded-Host / Host).
+  const host = (req.get("x-forwarded-host") ?? req.get("host") ?? "").split(",")[0].trim();
+  const ct = req.get("content-type") ?? "";
+  if (host === expectedHost && ct.includes("application/x-www-form-urlencoded")) {
+    return true;
+  }
+
   return false;
 }
