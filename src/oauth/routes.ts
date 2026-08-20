@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { verifyAdminCredentials } from "../store/admin.js";
 import {
   consumeAuthCode,
@@ -199,8 +199,19 @@ async function proxyMcp(req: Request, res: Response): Promise<void> {
   }
   const verified = await verifyAccessToken(m[1]);
   if (!verified) {
-    res.status(401).json({ error: "invalid_token" });
-    return;
+    // Claude Desktop / local clients may send the shared AUTH_TOKEN directly.
+    try {
+      const upstream = await loadUpstreamBearer();
+      const a = Buffer.from(m[1]);
+      const b = Buffer.from(upstream);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        res.status(401).json({ error: "invalid_token" });
+        return;
+      }
+    } catch {
+      res.status(401).json({ error: "invalid_token" });
+      return;
+    }
   }
 
   try {

@@ -14,6 +14,7 @@ import {
   upsertAccount,
   validateAccountInput,
 } from "../store/accounts.js";
+import { testMailConnections } from "../store/mail-test.js";
 import {
   checkCsrf,
   clearSessionCookie,
@@ -153,7 +154,8 @@ function accountForm(opts: {
   return `${adminHeader("accounts")}
   <h2>${opts.mode === "new" ? "Nova conta" : "Editar conta"}</h2>
   ${opts.error ? `<div class="error">${esc(opts.error)}</div>` : ""}
-  <form class="stack panel" method="post" action="${esc(opts.action)}">
+  <div id="test-result" hidden class="flash" style="display:none"></div>
+  <form id="account-form" class="stack panel" method="post" action="${esc(opts.action)}">
     <div class="row">
       <label>ID (slug)<input name="id" required pattern="[a-z0-9][a-z0-9_-]{0,31}" ${idReadonly} value="${esc(v.id ?? "")}" /></label>
       <label>Label<input name="label" required value="${esc(v.label ?? "")}" /></label>
@@ -194,9 +196,49 @@ function accountForm(opts: {
     </div>
     <div class="actions">
       <button type="submit">Guardar</button>
+      <button type="button" class="secondary" id="btn-test-conn">Testar configuração</button>
       <a class="btn secondary" href="/admin">Cancelar</a>
     </div>
-  </form>`;
+  </form>
+  <script>
+  (function () {
+    var form = document.getElementById("account-form");
+    var btn = document.getElementById("btn-test-conn");
+    var out = document.getElementById("test-result");
+    if (!form || !btn || !out) return;
+    btn.addEventListener("click", async function () {
+      btn.disabled = true;
+      var prev = btn.textContent;
+      btn.textContent = "A testar…";
+      out.hidden = false;
+      out.style.display = "block";
+      out.className = "flash";
+      out.textContent = "A testar IMAP e SMTP…";
+      try {
+        var fd = new FormData(form);
+        var res = await fetch("/admin/accounts/test", {
+          method: "POST",
+          body: new URLSearchParams(fd),
+          credentials: "same-origin",
+          headers: { "Accept": "application/json" }
+        });
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        out.className = data.ok ? "flash" : "error";
+        out.innerHTML =
+          "<strong>" + (data.ok ? "Configuração válida" : "Falha no teste") + "</strong><br>" +
+          "IMAP: " + (data.imap && data.imap.ok ? "OK" : "Erro") + " — " + (data.imap && data.imap.detail ? data.imap.detail : "") + "<br>" +
+          "SMTP: " + (data.smtp && data.smtp.ok ? "OK" : "Erro") + " — " + (data.smtp && data.smtp.detail ? data.smtp.detail : "");
+      } catch (e) {
+        out.className = "error";
+        out.textContent = e && e.message ? e.message : String(e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
+    });
+  })();
+  </script>`;
 }
 
 adminRouter.get("/accounts/new", requireAdminSession, (_req, res) => {
@@ -217,6 +259,35 @@ adminRouter.get("/accounts/new", requireAdminSession, (_req, res) => {
       })
     )
   );
+});
+
+adminRouter.post("/accounts/test", requireAdminSession, async (req, res) => {
+  if (!checkCsrf(req)) {
+    res.status(403).json({ error: "CSRF rejeitado" });
+    return;
+  }
+  try {
+    const body = req.body as Record<string, unknown>;
+    const id = String(body.id ?? "").trim();
+    const existing = id ? await getAccount(id) : undefined;
+    // Allow empty passwords on edit by reusing stored ones; for brand-new tests require them.
+    const account = validateAccountInput(
+      {
+        ...body,
+        label: String(body.label ?? "").trim() || "test",
+        default_from:
+          String(body.default_from ?? "").trim() ||
+          String(body.imap_user ?? "").trim() ||
+          "test@example.com",
+        id: id && /^[a-z0-9][a-z0-9_-]{0,31}$/.test(id) ? id : "test",
+      },
+      existing ? { keepPass: existing } : undefined
+    );
+    const result = await testMailConnections(account);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 adminRouter.post("/accounts/new", requireAdminSession, async (req, res) => {
