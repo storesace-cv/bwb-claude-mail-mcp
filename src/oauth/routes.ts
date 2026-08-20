@@ -229,18 +229,39 @@ async function proxyMcp(req: Request, res: Response): Promise<void> {
     const ct = req.get("content-type");
     if (ct) headers["Content-Type"] = ct;
 
+    // Streamable HTTP (Python MCP) requires the client session id on every
+    // request after initialize. Mail's Node MCP does not use this header.
+    const forwardHeaders = [
+      "mcp-session-id",
+      "mcp-protocol-version",
+      "last-event-id",
+    ] as const;
+    for (const h of forwardHeaders) {
+      const v = req.get(h);
+      if (v) headers[h] = v;
+    }
+
     const init: RequestInit = {
       method: req.method,
       headers,
     };
     if (req.method !== "GET" && req.method !== "HEAD") {
-      init.body = JSON.stringify(req.body ?? {});
-      if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
+      // Notifications may arrive with an empty body; avoid sending "{}" when
+      // Express left req.body undefined and the raw body was empty.
+      if (req.body !== undefined && req.body !== null) {
+        init.body = JSON.stringify(req.body);
+        if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
+      }
     }
 
     const upstreamRes = await fetch(upstream, init);
     res.status(upstreamRes.status);
-    const passHeaders = ["content-type", "mcp-session-id", "cache-control"];
+    const passHeaders = [
+      "content-type",
+      "mcp-session-id",
+      "mcp-protocol-version",
+      "cache-control",
+    ];
     for (const h of passHeaders) {
       const v = upstreamRes.headers.get(h);
       if (v) res.set(h, v);
