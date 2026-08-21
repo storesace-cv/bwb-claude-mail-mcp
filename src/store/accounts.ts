@@ -3,6 +3,7 @@ import path from "node:path";
 import { config } from "../config.js";
 import {
   applyProviderPreset,
+  MAIL_PROVIDERS,
   parseMailProvider,
   type MailAuthType,
   type MailProvider,
@@ -125,8 +126,7 @@ function normalizeAuthType(
   const s = String(raw ?? "").toLowerCase();
   if (s === "oauth2" || s === "password") return s;
   if (keep?.authType) return keep.authType;
-  if (provider === "microsoft" || provider === "google") return "oauth2";
-  return "password";
+  return MAIL_PROVIDERS[provider].authType;
 }
 
 export function validateAccountInput(
@@ -163,18 +163,19 @@ export function validateAccountInput(
   const smtpPort = Number(raw.smtp_port ?? preset.smtp_port);
 
   const imapPass =
-    String(raw.imap_pass ?? "").trim() || (opts?.keepPass?.imap.pass ?? "");
+    String(raw.imap_pass ?? "").trim().replace(/\s+/g, "") ||
+    (opts?.keepPass?.imap.pass ?? "");
   const smtpPass =
-    String(raw.smtp_pass ?? "").trim() || (opts?.keepPass?.smtp.pass ?? "");
+    String(raw.smtp_pass ?? "").trim().replace(/\s+/g, "") ||
+    (opts?.keepPass?.smtp.pass ?? "") ||
+    imapPass;
 
   const oauthKeep = opts?.keepPass?.oauth;
   let oauth = oauthKeep;
   if (authType === "oauth2") {
     if (!oauth?.refreshToken) {
       throw new Error(
-        provider === "google"
-          ? "Conta Gmail: usa «Ligar com Google» antes de guardar (OAuth obrigatório)."
-          : "Conta Microsoft: usa «Ligar com Microsoft» antes de guardar (OAuth obrigatório)."
+        "Conta OAuth: liga a conta com o botão OAuth antes de guardar."
       );
     }
   } else {

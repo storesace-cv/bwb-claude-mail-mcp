@@ -29,26 +29,26 @@ export const MAIL_PROVIDERS: Record<MailProvider, MailProviderPreset> = {
   microsoft: {
     provider: "microsoft",
     label: "Outlook.com / Hotmail (pessoal)",
-    authType: "oauth2",
+    authType: "password",
     imapHost: "outlook.office365.com",
     imapPort: 993,
     smtpHost: "smtp-mail.outlook.com",
     smtpPort: 587,
     smtpImplicitTls: false,
     helpHtml:
-      "A Microsoft desactivou user/password nesta conta. Usa «Ligar com Microsoft» (OAuth). Só contas pessoais outlook.com / hotmail / live.",
+      "Cria uma <a href=\"https://account.live.com/proofs/AppPassword\" target=\"_blank\" rel=\"noopener\">senha de aplicação</a> na conta Microsoft (com verificação em 2 passos) e cola-a nos campos Password IMAP/SMTP. User = o teu email completo (ex.: nome@outlook.com).",
   },
   google: {
     provider: "google",
     label: "Gmail (pessoal)",
-    authType: "oauth2",
+    authType: "password",
     imapHost: "imap.gmail.com",
     imapPort: 993,
     smtpHost: "smtp.gmail.com",
     smtpPort: 587,
     smtpImplicitTls: false,
     helpHtml:
-      "O Gmail exige OAuth. Usa «Ligar com Google». Só contas Google pessoais (@gmail.com).",
+      "Com a verificação em 2 passos activa, cria uma <a href=\"https://myaccount.google.com/apppasswords\" target=\"_blank\" rel=\"noopener\">senha de aplicação</a> Google e cola-a aqui (não a password normal do Gmail). User = o teu @gmail.com.",
   },
   icloud: {
     provider: "icloud",

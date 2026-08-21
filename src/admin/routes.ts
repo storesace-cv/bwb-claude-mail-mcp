@@ -432,7 +432,7 @@ function accountForm(opts: {
     .join("");
 
   const help = MAIL_PROVIDERS[provider].helpHtml;
-  const isOauth = provider === "microsoft" || provider === "google";
+  const isOauth = MAIL_PROVIDERS[provider].authType === "oauth2";
   const oauthReady =
     (provider === "microsoft" && microsoftConfigured()) ||
     (provider === "google" && googleConfigured());
@@ -465,12 +465,12 @@ function accountForm(opts: {
        </div>`
     : `<input type="hidden" name="auth_type" value="password" />
        <div class="row">
-         <label>User IMAP<input name="imap_user" id="imap_user" required value="${esc(v.imap_user ?? "")}" /></label>
-         <label>Password IMAP<input name="imap_pass" type="password" ${passRequired ? "required" : ""} placeholder="${opts.mode === "edit" ? "deixar vazio para manter" : ""}" autocomplete="new-password" /></label>
+         <label>User (email)<input name="imap_user" id="imap_user" required value="${esc(v.imap_user ?? "")}" placeholder="nome@outlook.com" /></label>
+         <label>Senha de aplicação<input name="imap_pass" type="password" ${passRequired ? "required" : ""} placeholder="${opts.mode === "edit" ? "deixar vazio para manter" : "cola a senha de aplicação"}" autocomplete="new-password" /></label>
        </div>
        <div class="row">
-         <label>User SMTP<input name="smtp_user" required value="${esc(v.smtp_user ?? "")}" /></label>
-         <label>Password SMTP<input name="smtp_pass" type="password" ${passRequired ? "required" : ""} placeholder="${opts.mode === "edit" ? "deixar vazio para manter" : ""}" autocomplete="new-password" /></label>
+         <label>User SMTP<input name="smtp_user" required value="${esc(v.smtp_user ?? "")}" placeholder="igual ao email" /></label>
+         <label>Senha SMTP<input name="smtp_pass" type="password" ${passRequired ? "required" : ""} placeholder="${opts.mode === "edit" ? "deixar vazio para manter" : "mesma senha de aplicação"}" autocomplete="new-password" /></label>
        </div>`;
 
   const presetsJson = JSON.stringify(

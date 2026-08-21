@@ -66,10 +66,13 @@ function pickFolder(
 function humanizeAuthError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (/5\.7\.139|basic authentication is disabled/i.test(msg)) {
-    return `${msg} — esta conta exige OAuth (escolhe Outlook/Gmail e «Ligar com…»).`;
+    return (
+      `${msg} — a Microsoft rejeitou a senha de aplicação nesta conta (basic auth desactivado). ` +
+      `Confirma IMAP activo em outlook.live.com → Definições → Correio → Sincronizar email, e que a senha de aplicação é recente (sem espaços).`
+    );
   }
   if (/Invalid login|AUTHENTICATIONFAILED|Command failed/i.test(msg)) {
-    return `${msg} — verifica credenciais ou volta a autorizar OAuth.`;
+    return `${msg} — verifica o email completo e a senha de aplicação (não a password normal).`;
   }
   return msg;
 }
