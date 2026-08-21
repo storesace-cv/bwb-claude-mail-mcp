@@ -62,6 +62,10 @@ fi
 cd "$BACKEND_DIR"
 git fetch --tags
 git checkout v0.2.1 2>/dev/null || git checkout main
+# Discard local edits then re-apply BWB patches (idempotent).
+git reset --hard HEAD
+git clean -fd --exclude=.env --exclude=node_modules --exclude=dist
+python3 "$REPO_ROOT/deploy/patches/mail-v0.2.1/apply.py" "$BACKEND_DIR"
 npm ci
 npm run build
 

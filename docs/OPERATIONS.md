@@ -39,6 +39,15 @@
 | `/var/lib/whatsapp-mcp/wa-accounts.json` | Labels/ports das contas |
 | `/etc/whatsapp-mcp/{a,b}/` | Env bridge + MCP por conta |
 
+### Helpdesk ticket context
+
+| Variable (backend `.env`) | Purpose |
+|------|---------|
+| `HELPDESK_CONTEXT_URL` | `https://helpdesk.storesace.cv/otobo/public.pl?Action=PublicBWBTicketContext` |
+| `HELPDESK_CONTEXT_TOKEN` | Same Bearer as OTOBO `ZZZBWBTicketContext.pm` |
+
+After changing `.env`: `systemctl restart claude-mail-mcp.service`. Docs: `HANDOFF-IMPLEMENTACAO-HELPDECK-CONTEXT.md`, `CLAUDE-AI-HELPDECK-EMAIL.md`.
+
 ## Services
 
 ```bash
