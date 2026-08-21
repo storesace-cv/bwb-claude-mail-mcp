@@ -29,14 +29,14 @@ export const MAIL_PROVIDERS: Record<MailProvider, MailProviderPreset> = {
   microsoft: {
     provider: "microsoft",
     label: "Outlook.com / Hotmail (pessoal)",
-    authType: "password",
+    authType: "oauth2",
     imapHost: "outlook.office365.com",
     imapPort: 993,
     smtpHost: "smtp-mail.outlook.com",
     smtpPort: 587,
     smtpImplicitTls: false,
     helpHtml:
-      "Cria uma <a href=\"https://account.live.com/proofs/AppPassword\" target=\"_blank\" rel=\"noopener\">senha de aplicação</a> na conta Microsoft (com verificação em 2 passos) e cola-a nos campos Password IMAP/SMTP. User = o teu email completo (ex.: nome@outlook.com).",
+      "Nesta conta a Microsoft bloqueia senha de aplicação. Clica <strong>«Ligar com Microsoft»</strong>, inicia sessão e aceita o consentimento. Só contas pessoais outlook.com / hotmail / live.",
   },
   google: {
     provider: "google",
