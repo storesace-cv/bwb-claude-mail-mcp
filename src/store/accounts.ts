@@ -1,6 +1,12 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { config } from "../config.js";
+import {
+  applyProviderPreset,
+  parseMailProvider,
+  type MailAuthType,
+  type MailProvider,
+} from "./mail-providers.js";
 
 export interface ImapCreds {
   host: string;
@@ -31,14 +37,25 @@ export interface MailDefaults {
   sentFolder: string | null;
 }
 
+export interface AccountOAuth {
+  provider: "microsoft" | "google";
+  refreshToken: string;
+  accessToken: string;
+  expiresAt: number;
+  email: string;
+}
+
 export interface Account {
   id: string;
   label: string;
   default?: boolean;
+  provider?: MailProvider;
+  authType?: MailAuthType;
   imap: ImapCreds;
   smtp: SmtpCreds;
   mail: MailDefaults;
   caldav?: CalDavCreds;
+  oauth?: AccountOAuth;
 }
 
 export interface AccountsFile {
@@ -100,6 +117,18 @@ export async function getAccount(id: string): Promise<Account | undefined> {
   return (await readFile()).accounts.find((a) => a.id === id);
 }
 
+function normalizeAuthType(
+  provider: MailProvider,
+  raw: unknown,
+  keep?: Account
+): MailAuthType {
+  const s = String(raw ?? "").toLowerCase();
+  if (s === "oauth2" || s === "password") return s;
+  if (keep?.authType) return keep.authType;
+  if (provider === "microsoft" || provider === "google") return "oauth2";
+  return "password";
+}
+
 export function validateAccountInput(
   raw: Record<string, unknown>,
   opts?: { keepPass?: Account; existingIds?: string[]; autoId?: boolean }
@@ -119,32 +148,62 @@ export function validateAccountInput(
   const label = String(raw.label ?? "").trim();
   if (!label) throw new Error("Label is required");
 
+  const provider = parseMailProvider(raw.provider ?? opts?.keepPass?.provider);
+  const authType = normalizeAuthType(provider, raw.auth_type ?? raw.authType, opts?.keepPass);
+  const preset = applyProviderPreset(provider, {
+    imap_host: String(raw.imap_host ?? ""),
+    imap_port: raw.imap_port as string | number,
+    smtp_host: String(raw.smtp_host ?? ""),
+    smtp_port: raw.smtp_port as string | number,
+  });
+
+  const imapHost = String(raw.imap_host ?? "").trim() || preset.imap_host;
+  const smtpHost = String(raw.smtp_host ?? "").trim() || preset.smtp_host;
+  const imapPort = Number(raw.imap_port ?? preset.imap_port);
+  const smtpPort = Number(raw.smtp_port ?? preset.smtp_port);
+
   const imapPass =
-    String(raw.imap_pass ?? "").trim() ||
-    (opts?.keepPass?.imap.pass ?? "");
+    String(raw.imap_pass ?? "").trim() || (opts?.keepPass?.imap.pass ?? "");
   const smtpPass =
-    String(raw.smtp_pass ?? "").trim() ||
-    (opts?.keepPass?.smtp.pass ?? "");
-  if (!imapPass) throw new Error("IMAP password is required");
-  if (!smtpPass) throw new Error("SMTP password is required");
+    String(raw.smtp_pass ?? "").trim() || (opts?.keepPass?.smtp.pass ?? "");
+
+  const oauthKeep = opts?.keepPass?.oauth;
+  let oauth = oauthKeep;
+  if (authType === "oauth2") {
+    if (!oauth?.refreshToken) {
+      throw new Error(
+        provider === "google"
+          ? "Conta Gmail: usa «Ligar com Google» antes de guardar (OAuth obrigatório)."
+          : "Conta Microsoft: usa «Ligar com Microsoft» antes de guardar (OAuth obrigatório)."
+      );
+    }
+  } else {
+    oauth = undefined;
+    if (!imapPass) throw new Error("IMAP password is required");
+    if (!smtpPass) throw new Error("SMTP password is required");
+  }
+
+  const smtpTls = raw.smtp_tls !== "false" && raw.smtp_tls !== false;
 
   const account: Account = {
     id,
     label,
     default: raw.default === true || raw.default === "on" || raw.default === "true",
+    provider,
+    authType,
     imap: {
-      host: String(raw.imap_host ?? "").trim(),
-      port: Number(raw.imap_port ?? 993),
+      host: imapHost,
+      port: imapPort,
       user: String(raw.imap_user ?? "").trim(),
-      pass: imapPass,
+      pass: authType === "oauth2" ? "" : imapPass,
       tls: raw.imap_tls !== "false" && raw.imap_tls !== false,
     },
     smtp: {
-      host: String(raw.smtp_host ?? "").trim(),
-      port: Number(raw.smtp_port ?? 465),
+      host: smtpHost,
+      port: smtpPort,
       user: String(raw.smtp_user ?? "").trim(),
-      pass: smtpPass,
-      tls: raw.smtp_tls !== "false" && raw.smtp_tls !== false,
+      pass: authType === "oauth2" ? "" : smtpPass,
+      tls: smtpTls,
     },
     mail: {
       defaultFrom: String(raw.default_from ?? "").trim(),
@@ -153,6 +212,13 @@ export function validateAccountInput(
       sentFolder: String(raw.sent_folder ?? "Sent").trim() || null,
     },
   };
+
+  if (oauth && authType === "oauth2") {
+    account.oauth = oauth;
+    if (!account.imap.user) account.imap.user = oauth.email;
+    if (!account.smtp.user) account.smtp.user = oauth.email;
+    if (!account.mail.defaultFrom) account.mail.defaultFrom = oauth.email;
+  }
 
   if (!account.imap.host || !account.imap.user) throw new Error("IMAP host/user required");
   if (!account.smtp.host || !account.smtp.user) throw new Error("SMTP host/user required");
@@ -163,7 +229,10 @@ export function validateAccountInput(
     account.caldav = {
       url: caldavUrl,
       user: String(raw.caldav_user ?? account.imap.user).trim(),
-      pass: String(raw.caldav_pass ?? "").trim() || opts?.keepPass?.caldav?.pass || account.imap.pass,
+      pass:
+        String(raw.caldav_pass ?? "").trim() ||
+        opts?.keepPass?.caldav?.pass ||
+        account.imap.pass,
     };
   }
 
@@ -183,6 +252,44 @@ export async function upsertAccount(account: Account): Promise<void> {
     data.accounts[0].default = true;
   }
   await writeFile(data);
+}
+
+export async function updateAccountOAuth(
+  id: string,
+  oauth: AccountOAuth,
+  extras?: Partial<Pick<Account, "label" | "imap" | "smtp" | "mail" | "provider" | "authType">>
+): Promise<Account> {
+  const data = await readFile();
+  const idx = data.accounts.findIndex((a) => a.id === id);
+  if (idx < 0) throw new Error("Account not found");
+  const prev = data.accounts[idx];
+  const next: Account = {
+    ...prev,
+    ...extras,
+    provider: extras?.provider ?? prev.provider ?? oauth.provider,
+    authType: "oauth2",
+    oauth,
+    imap: {
+      ...prev.imap,
+      ...(extras?.imap ?? {}),
+      user: extras?.imap?.user ?? oauth.email,
+      pass: "",
+    },
+    smtp: {
+      ...prev.smtp,
+      ...(extras?.smtp ?? {}),
+      user: extras?.smtp?.user ?? oauth.email,
+      pass: "",
+    },
+    mail: {
+      ...prev.mail,
+      ...(extras?.mail ?? {}),
+      defaultFrom: extras?.mail?.defaultFrom ?? (prev.mail.defaultFrom || oauth.email),
+    },
+  };
+  data.accounts[idx] = next;
+  await writeFile(data);
+  return next;
 }
 
 export async function deleteAccount(id: string): Promise<void> {

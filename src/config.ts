@@ -61,4 +61,8 @@ export const config = {
   accessTokenTtlSec: 3600,
   refreshTokenTtlSec: 30 * 24 * 3600,
   logLevel: process.env.LOG_LEVEL ?? "info",
+  microsoftClientId: process.env.MICROSOFT_CLIENT_ID ?? "",
+  microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET ?? "",
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
 };

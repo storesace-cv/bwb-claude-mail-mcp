@@ -9,13 +9,26 @@ import {
 } from "../store/admin.js";
 import {
   deleteAccount,
+  generateAccountId,
   getAccount,
   listAccounts,
   setDefaultAccount,
+  updateAccountOAuth,
   upsertAccount,
   validateAccountInput,
 } from "../store/accounts.js";
 import { testMailConnections } from "../store/mail-test.js";
+import { MAIL_PROVIDERS, parseMailProvider } from "../store/mail-providers.js";
+import {
+  buildAuthorizeUrl,
+  createOAuthState,
+  consumeOAuthState,
+  googleConfigured,
+  microsoftConfigured,
+  oauthAccountSkeleton,
+  tokensFromAuthorizationCode,
+  type OAuthMailProvider,
+} from "../store/mail-oauth.js";
 import { getAllWhatsappStatuses } from "../store/whatsapp-status.js";
 import type { WhatsappAccountStatus } from "../store/whatsapp-status.js";
 import {
@@ -389,8 +402,10 @@ function accountForm(opts: {
   values: Record<string, string>;
   action: string;
   error?: string;
+  oauthLinked?: boolean;
 }): string {
   const v = opts.values;
+  const provider = parseMailProvider(v.provider);
   const tipFrom =
     "Endereço de email que aparece no campo «De» quando o Claude envia mensagens por esta conta. Usa normalmente o mesmo endereço IMAP (ex.: jorge.peixinho@bwb.pt).";
   const tipFromName =
@@ -409,31 +424,93 @@ function accountForm(opts: {
          </div>
          <p class="muted" style="margin:0;font-size:0.8125rem">O ID é gerado automaticamente — não precisas de o inventar.</p>`;
 
+  const providerOptions = (Object.keys(MAIL_PROVIDERS) as Array<keyof typeof MAIL_PROVIDERS>)
+    .map((key) => {
+      const p = MAIL_PROVIDERS[key];
+      return `<option value="${esc(key)}" ${provider === key ? "selected" : ""}>${esc(p.label)}</option>`;
+    })
+    .join("");
+
+  const help = MAIL_PROVIDERS[provider].helpHtml;
+  const isOauth = provider === "microsoft" || provider === "google";
+  const oauthReady =
+    (provider === "microsoft" && microsoftConfigured()) ||
+    (provider === "google" && googleConfigured());
+  const oauthBtnLabel =
+    provider === "google" ? "Ligar com Google" : "Ligar com Microsoft";
+  const oauthHref =
+    opts.mode === "edit" && v.id
+      ? `/admin/oauth/${provider}/start?accountId=${encodeURIComponent(v.id)}`
+      : `/admin/oauth/${provider}/start`;
+  const passRequired = !isOauth && opts.mode === "new";
+  const oauthStatus = opts.oauthLinked
+    ? `<p class="flash" style="margin:0">OAuth ligado${v.imap_user ? ` (${esc(v.imap_user)})` : ""}. Podes re-ligar se o token expirar.</p>`
+    : isOauth
+      ? `<p class="muted" style="margin:0">Ainda sem OAuth — usa o botão abaixo antes de guardar.</p>`
+      : "";
+
+  const passBlock = isOauth
+    ? `<input type="hidden" name="auth_type" value="oauth2" />
+       <div class="stack" style="gap:0.5rem;margin:0.75rem 0">
+         ${oauthStatus}
+         ${
+           oauthReady
+             ? `<p><a class="btn" href="${esc(oauthHref)}" id="oauth-link">${esc(oauthBtnLabel)}</a></p>`
+             : `<p class="error">OAuth ${esc(provider)} não configurado no servidor (faltam CLIENT_ID/SECRET no .env).</p>`
+         }
+       </div>
+       <div class="row">
+         <label>User IMAP<input name="imap_user" id="imap_user" value="${esc(v.imap_user ?? "")}" ${opts.oauthLinked ? "readonly" : ""} /></label>
+         <label>User SMTP<input name="smtp_user" value="${esc(v.smtp_user ?? "")}" ${opts.oauthLinked ? "readonly" : ""} /></label>
+       </div>`
+    : `<input type="hidden" name="auth_type" value="password" />
+       <div class="row">
+         <label>User IMAP<input name="imap_user" id="imap_user" required value="${esc(v.imap_user ?? "")}" /></label>
+         <label>Password IMAP<input name="imap_pass" type="password" ${passRequired ? "required" : ""} placeholder="${opts.mode === "edit" ? "deixar vazio para manter" : ""}" autocomplete="new-password" /></label>
+       </div>
+       <div class="row">
+         <label>User SMTP<input name="smtp_user" required value="${esc(v.smtp_user ?? "")}" /></label>
+         <label>Password SMTP<input name="smtp_pass" type="password" ${passRequired ? "required" : ""} placeholder="${opts.mode === "edit" ? "deixar vazio para manter" : ""}" autocomplete="new-password" /></label>
+       </div>`;
+
+  const presetsJson = JSON.stringify(
+    Object.fromEntries(
+      Object.entries(MAIL_PROVIDERS).map(([k, p]) => [
+        k,
+        {
+          imap_host: p.imapHost,
+          imap_port: String(p.imapPort),
+          smtp_host: p.smtpHost,
+          smtp_port: String(p.smtpPort),
+          auth: p.authType,
+          help: p.helpHtml,
+        },
+      ])
+    )
+  );
+
   return `${adminHeader("accounts")}
   <h2>${opts.mode === "new" ? "Nova conta" : "Editar conta"}</h2>
   ${opts.error ? `<div class="error">${esc(opts.error)}</div>` : ""}
   <div id="test-result" hidden class="flash" style="display:none"></div>
   <form id="account-form" class="stack panel" method="post" action="${esc(opts.action)}">
     ${idField}
+    <label>Tipo de conta
+      <select name="provider" id="provider-select">${providerOptions}</select>
+    </label>
+    <p id="provider-help" class="muted" style="margin:0;font-size:0.8125rem">${help}</p>
     <label><input type="checkbox" name="default" ${v.default === "on" || v.default === "true" ? "checked" : ""} /> Conta default</label>
-    <h2>IMAP</h2>
+    <h2>Servidores</h2>
     <div class="row">
-      <label>Host<input name="imap_host" required value="${esc(v.imap_host ?? "mail.bwb.pt")}" /></label>
-      <label>Porta<input name="imap_port" type="number" required value="${esc(v.imap_port ?? "993")}" /></label>
+      <label>IMAP host<input name="imap_host" id="imap_host" required value="${esc(v.imap_host ?? "mail.bwb.pt")}" /></label>
+      <label>IMAP porta<input name="imap_port" id="imap_port" type="number" required value="${esc(v.imap_port ?? "993")}" /></label>
     </div>
     <div class="row">
-      <label>User<input name="imap_user" id="imap_user" required value="${esc(v.imap_user ?? "")}" /></label>
-      <label>Password<input name="imap_pass" type="password" ${opts.mode === "new" ? "required" : ""} placeholder="${opts.mode === "edit" ? "deixar vazio para manter" : ""}" autocomplete="new-password" /></label>
+      <label>SMTP host<input name="smtp_host" id="smtp_host" required value="${esc(v.smtp_host ?? "mail.bwb.pt")}" /></label>
+      <label>SMTP porta<input name="smtp_port" id="smtp_port" type="number" required value="${esc(v.smtp_port ?? "465")}" /></label>
     </div>
-    <h2>SMTP</h2>
-    <div class="row">
-      <label>Host<input name="smtp_host" required value="${esc(v.smtp_host ?? "mail.bwb.pt")}" /></label>
-      <label>Porta<input name="smtp_port" type="number" required value="${esc(v.smtp_port ?? "465")}" /></label>
-    </div>
-    <div class="row">
-      <label>User<input name="smtp_user" required value="${esc(v.smtp_user ?? "")}" /></label>
-      <label>Password<input name="smtp_pass" type="password" ${opts.mode === "new" ? "required" : ""} placeholder="${opts.mode === "edit" ? "deixar vazio para manter" : ""}" autocomplete="new-password" /></label>
-    </div>
+    <h2>Autenticação</h2>
+    ${passBlock}
     <h2>Mail</h2>
     <div class="row">
       <label class="with-tip" data-tip="${esc(tipFrom)}">Default From
@@ -470,6 +547,10 @@ function accountForm(opts: {
     var imapUser = document.getElementById("imap_user");
     var defaultFrom = document.getElementById("default_from");
     var smtpUser = form && form.querySelector('input[name="smtp_user"]');
+    var providerSelect = document.getElementById("provider-select");
+    var presets = ${presetsJson};
+    var editMode = ${opts.mode === "edit" ? "true" : "false"};
+    var accountId = ${JSON.stringify(v.id ?? "")};
 
     function slugify(s) {
       return String(s || "")
@@ -484,6 +565,48 @@ function accountForm(opts: {
       if (!idInput) return;
       var seed = (labelInput && labelInput.value) || (imapUser && imapUser.value) || (defaultFrom && defaultFrom.value) || "";
       idInput.value = slugify(seed);
+    }
+    function applyPreset() {
+      if (!providerSelect) return;
+      var p = presets[providerSelect.value];
+      if (!p) return;
+      var ih = document.getElementById("imap_host");
+      var ip = document.getElementById("imap_port");
+      var sh = document.getElementById("smtp_host");
+      var sp = document.getElementById("smtp_port");
+      var help = document.getElementById("provider-help");
+      if (ih) ih.value = p.imap_host;
+      if (ip) ip.value = p.imap_port;
+      if (sh) sh.value = p.smtp_host;
+      if (sp) sp.value = p.smtp_port;
+      if (help) help.innerHTML = p.help;
+      var link = document.getElementById("oauth-link");
+      if (link && (providerSelect.value === "microsoft" || providerSelect.value === "google")) {
+        var q = editMode && accountId ? ("?accountId=" + encodeURIComponent(accountId)) : "";
+        if (!editMode && labelInput && labelInput.value) {
+          q = (q ? q + "&" : "?") + "label=" + encodeURIComponent(labelInput.value);
+        }
+        link.href = "/admin/oauth/" + providerSelect.value + "/start" + q;
+      }
+      // Reload form fields for auth UI when provider changes on new accounts
+      if (!editMode) {
+        var url = "/admin/accounts/new?provider=" + encodeURIComponent(providerSelect.value);
+        if (labelInput && labelInput.value) url += "&label=" + encodeURIComponent(labelInput.value);
+        window.location.href = url;
+      }
+    }
+    if (providerSelect && !editMode) {
+      providerSelect.addEventListener("change", applyPreset);
+    } else if (providerSelect && editMode) {
+      providerSelect.addEventListener("change", function () {
+        var p = presets[providerSelect.value];
+        if (!p) return;
+        document.getElementById("imap_host").value = p.imap_host;
+        document.getElementById("imap_port").value = p.imap_port;
+        document.getElementById("smtp_host").value = p.smtp_host;
+        document.getElementById("smtp_port").value = p.smtp_port;
+        document.getElementById("provider-help").innerHTML = p.help;
+      });
     }
     if (idInput) {
       if (labelInput) labelInput.addEventListener("input", refreshId);
@@ -546,7 +669,9 @@ function accountForm(opts: {
   </script>`;
 }
 
-adminRouter.get("/accounts/new", requireAdminSession, requireMailMode, (_req, res) => {
+adminRouter.get("/accounts/new", requireAdminSession, requireMailMode, (req, res) => {
+  const provider = parseMailProvider(req.query.provider);
+  const preset = MAIL_PROVIDERS[provider];
   res.type("html").send(
     layout(
       "Nova conta",
@@ -554,12 +679,14 @@ adminRouter.get("/accounts/new", requireAdminSession, requireMailMode, (_req, re
         mode: "new",
         action: "/admin/accounts/new",
         values: {
-          imap_host: "mail.bwb.pt",
-          imap_port: "993",
-          smtp_host: "mail.bwb.pt",
-          smtp_port: "465",
-          drafts_folder: "Drafts",
-          sent_folder: "Sent",
+          provider,
+          label: String(req.query.label ?? ""),
+          imap_host: preset.imapHost,
+          imap_port: String(preset.imapPort),
+          smtp_host: preset.smtpHost,
+          smtp_port: String(preset.smtpPort),
+          drafts_folder: provider === "google" ? "[Gmail]/Drafts" : "Drafts",
+          sent_folder: provider === "google" ? "[Gmail]/Sent Mail" : "Sent",
         },
       })
     )
@@ -634,15 +761,20 @@ adminRouter.get("/accounts/:id", requireAdminSession, requireMailMode, async (re
     res.status(404).send("Not found");
     return;
   }
+  const flash = typeof req.query.ok === "string" ? req.query.ok : undefined;
+  const err = typeof req.query.err === "string" ? req.query.err : undefined;
   res.type("html").send(
     layout(
       "Editar conta",
       accountForm({
         mode: "edit",
         action: `/admin/accounts/${encodeURIComponent(acc.id)}`,
+        oauthLinked: acc.authType === "oauth2" && Boolean(acc.oauth?.refreshToken),
+        error: err,
         values: {
           id: acc.id,
           label: acc.label,
+          provider: acc.provider ?? "generic",
           default: acc.default ? "true" : "",
           imap_host: acc.imap.host,
           imap_port: String(acc.imap.port),
@@ -657,7 +789,8 @@ adminRouter.get("/accounts/:id", requireAdminSession, requireMailMode, async (re
           caldav_url: acc.caldav?.url ?? "",
           caldav_user: acc.caldav?.user ?? "",
         },
-      })
+      }),
+      { flash }
     )
   );
 });
@@ -714,6 +847,110 @@ adminRouter.post("/accounts/:id/default", requireAdminSession, requireMailMode, 
   await setDefaultAccount(req.params.id);
   res.redirect("/admin?ok=Default+atualizado");
 });
+
+adminRouter.get(
+  "/oauth/:provider/start",
+  requireAdminSession,
+  requireMailMode,
+  async (req, res) => {
+    const provider = req.params.provider as OAuthMailProvider;
+    if (provider !== "microsoft" && provider !== "google") {
+      res.status(404).send("Not found");
+      return;
+    }
+    try {
+      const accountId = String(req.query.accountId ?? "").trim() || "__new__";
+      const label = String(req.query.label ?? "").trim() || undefined;
+      if (accountId !== "__new__") {
+        const existing = await getAccount(accountId);
+        if (!existing) {
+          res.redirect("/admin?err=" + encodeURIComponent("Conta não encontrada"));
+          return;
+        }
+      }
+      const state = await createOAuthState(provider, accountId, label);
+      res.redirect(buildAuthorizeUrl(provider, state));
+    } catch (err) {
+      res.redirect(
+        `/admin/accounts/new?provider=${encodeURIComponent(provider)}&err=` +
+          encodeURIComponent(err instanceof Error ? err.message : String(err))
+      );
+    }
+  }
+);
+
+adminRouter.get(
+  "/oauth/:provider/callback",
+  requireAdminSession,
+  requireMailMode,
+  async (req, res) => {
+    const provider = req.params.provider as OAuthMailProvider;
+    if (provider !== "microsoft" && provider !== "google") {
+      res.status(404).send("Not found");
+      return;
+    }
+    const errQ = String(req.query.error_description ?? req.query.error ?? "").trim();
+    if (errQ) {
+      res.redirect(`/admin?err=${encodeURIComponent(errQ)}`);
+      return;
+    }
+    try {
+      const code = String(req.query.code ?? "").trim();
+      const state = String(req.query.state ?? "").trim();
+      if (!code || !state) throw new Error("Callback OAuth incompleto");
+      const pending = await consumeOAuthState(state);
+      if (pending.provider !== provider) throw new Error("Provider OAuth mismatch");
+      const oauth = await tokensFromAuthorizationCode(provider, code);
+      const all = await listAccounts();
+
+      if (pending.accountId === "__new__") {
+        const id = generateAccountId(oauth.email, all.map((a) => a.id));
+        const account = oauthAccountSkeleton(id, provider, oauth, pending.label);
+        await upsertAccount(account);
+        res.redirect(
+          `/admin/accounts/${encodeURIComponent(id)}?ok=` +
+            encodeURIComponent("OAuth ligado — confirma e guarda se precisares")
+        );
+        return;
+      }
+
+      const existing = await getAccount(pending.accountId);
+      if (!existing) throw new Error("Conta não encontrada");
+      const preset = MAIL_PROVIDERS[provider];
+      await updateAccountOAuth(pending.accountId, oauth, {
+        provider,
+        authType: "oauth2",
+        label: pending.label || existing.label,
+        imap: {
+          ...existing.imap,
+          host: preset.imapHost,
+          port: preset.imapPort,
+          user: oauth.email,
+          pass: "",
+          tls: true,
+        },
+        smtp: {
+          ...existing.smtp,
+          host: preset.smtpHost,
+          port: preset.smtpPort,
+          user: oauth.email,
+          pass: "",
+          tls: true,
+        },
+        mail: {
+          ...existing.mail,
+          defaultFrom: existing.mail.defaultFrom || oauth.email,
+        },
+      });
+      res.redirect(
+        `/admin/accounts/${encodeURIComponent(pending.accountId)}?ok=` +
+          encodeURIComponent("OAuth actualizado")
+      );
+    } catch (err) {
+      res.redirect(`/admin?err=${encodeURIComponent(err instanceof Error ? err.message : String(err))}`);
+    }
+  }
+);
 
 adminRouter.get("/profile", requireAdminSession, async (_req, res) => {
   const admin = await getAdmin();

@@ -32,7 +32,8 @@ def main() -> int:
     shutil.copyfile(HERE / "tools-helpdesk.ts", src / "tools-helpdesk.ts")
     shutil.copyfile(HERE / "tools-mail-complete.ts", src / "tools-mail-complete.ts")
     shutil.copyfile(HERE / "tools-calendar-complete.ts", src / "tools-calendar-complete.ts")
-    print("copied helpdesk + mail-complete + calendar-complete sources")
+    shutil.copyfile(HERE / "oauth-tokens.ts", src / "oauth-tokens.ts")
+    print("copied helpdesk + mail-complete + calendar-complete + oauth-tokens sources")
 
     # --- imap-client.ts ---
     imap = src / "imap-client.ts"
@@ -690,6 +691,414 @@ def apply_calendar_complete(src: pathlib.Path) -> None:
         print("patched: caldav-client.ts (delete/update)")
     else:
         print("already patched: caldav-client.ts")
+
+    apply_oauth_xoauth2(src)
+    return 0
+
+
+MARKER_OAUTH = "bwb-mail-oauth"
+
+
+def apply_oauth_xoauth2(src: pathlib.Path) -> None:
+    """Allow oauth2 accounts + XOAUTH2 on IMAP/SMTP (personal Microsoft/Google)."""
+    accounts = src / "accounts.ts"
+    text = accounts.read_text(encoding="utf-8")
+    if MARKER_OAUTH not in text:
+        needle = """export interface Account {
+  id: string;
+  label: string;
+  default?: boolean;
+  imap: ImapCreds;
+  smtp: SmtpCreds;
+  mail: MailDefaults;
+  caldav?: CalDavCreds;
+}
+"""
+        insert = """export interface AccountOAuth { // """ + MARKER_OAUTH + """
+  provider: "microsoft" | "google";
+  refreshToken: string;
+  accessToken: string;
+  expiresAt: number;
+  email: string;
+}
+
+export interface Account {
+  id: string;
+  label: string;
+  default?: boolean;
+  provider?: string; // """ + MARKER_OAUTH + """
+  authType?: "password" | "oauth2"; // """ + MARKER_OAUTH + """
+  imap: ImapCreds;
+  smtp: SmtpCreds;
+  mail: MailDefaults;
+  caldav?: CalDavCreds;
+  oauth?: AccountOAuth; // """ + MARKER_OAUTH + """
+}
+"""
+        if needle not in text:
+            raise SystemExit("ERROR: Account interface not found for oauth patch")
+        text = text.replace(needle, insert, 1)
+
+        old_parse = """  return {
+    id,
+    label: expectStr(a.label, `accounts[${index}].label`),
+    default: a.default === true ? true : undefined,
+    imap: parseImap(a.imap, `accounts[${index}].imap`),
+    smtp: parseSmtp(a.smtp, `accounts[${index}].smtp`),
+    mail: parseMail(a.mail, `accounts[${index}].mail`),
+    caldav: a.caldav ? parseCalDav(a.caldav, `accounts[${index}].caldav`) : undefined,
+  };
+}"""
+        new_parse = """  const authType = a.authType === "oauth2" ? "oauth2" as const : a.authType === "password" ? "password" as const : undefined; // """ + MARKER_OAUTH + """
+  const oauth = a.oauth && typeof a.oauth === "object" ? parseOAuth(a.oauth, `accounts[${index}].oauth`) : undefined; // """ + MARKER_OAUTH + """
+  const imap = parseImap(a.imap, `accounts[${index}].imap`, Boolean(oauth));
+  const smtp = parseSmtp(a.smtp, `accounts[${index}].smtp`, Boolean(oauth));
+  if (!oauth && (!imap.pass || !smtp.pass)) {
+    throw new AccountsStoreError(`accounts[${index}] requires imap/smtp pass or oauth`);
+  }
+  return {
+    id,
+    label: expectStr(a.label, `accounts[${index}].label`),
+    default: a.default === true ? true : undefined,
+    provider: typeof a.provider === "string" ? a.provider : undefined,
+    authType: authType ?? (oauth ? "oauth2" : "password"),
+    imap,
+    smtp,
+    mail: parseMail(a.mail, `accounts[${index}].mail`),
+    caldav: a.caldav ? parseCalDav(a.caldav, `accounts[${index}].caldav`) : undefined,
+    oauth,
+  };
+}
+
+function parseOAuth(raw: unknown, where: string): AccountOAuth { // """ + MARKER_OAUTH + """
+  if (!raw || typeof raw !== "object") throw new AccountsStoreError(`${where} must be an object`);
+  const o = raw as Record<string, unknown>;
+  const provider = o.provider === "google" ? "google" as const : o.provider === "microsoft" ? "microsoft" as const : null;
+  if (!provider) throw new AccountsStoreError(`${where}.provider must be microsoft|google`);
+  return {
+    provider,
+    refreshToken: expectStr(o.refreshToken, `${where}.refreshToken`),
+    accessToken: expectStr(o.accessToken, `${where}.accessToken`),
+    expiresAt: typeof o.expiresAt === "number" ? o.expiresAt : expectInt(o.expiresAt, `${where}.expiresAt`),
+    email: expectStr(o.email, `${where}.email`),
+  };
+}"""
+        if old_parse not in text:
+            raise SystemExit("ERROR: parseAccount return block not found")
+        text = text.replace(old_parse, new_parse, 1)
+
+        text = text.replace(
+            "function parseImap(raw: unknown, where: string): ImapCreds {",
+            "function parseImap(raw: unknown, where: string, allowEmptyPass = false): ImapCreds { // "
+            + MARKER_OAUTH
+            + "\n",
+            1,
+        )
+        text = text.replace(
+            "function parseSmtp(raw: unknown, where: string): SmtpCreds {",
+            "function parseSmtp(raw: unknown, where: string, allowEmptyPass = false): SmtpCreds { // "
+            + MARKER_OAUTH
+            + "\n",
+            1,
+        )
+        text = text.replace(
+            "    pass: expectStr(o.pass, `${where}.pass`),\n    tls: typeof o.tls === \"boolean\" ? o.tls : true,\n  };\n}\n\nfunction parseSmtp",
+            "    pass: allowEmptyPass && (o.pass === \"\" || o.pass === undefined) ? \"\" : expectStr(o.pass, `${where}.pass`),\n    tls: typeof o.tls === \"boolean\" ? o.tls : true,\n  };\n}\n\nfunction parseSmtp",
+            1,
+        )
+        # second pass for smtp - after parseImap was changed the smtp still has expectStr
+        text = text.replace(
+            """function parseSmtp(raw: unknown, where: string, allowEmptyPass = false): SmtpCreds { // """
+            + MARKER_OAUTH
+            + """
+  if (!raw || typeof raw !== "object") {
+    throw new AccountsStoreError(`${where} must be an object`);
+  }
+  const o = raw as Record<string, unknown>;
+  return {
+    host: expectStr(o.host, `${where}.host`),
+    port: expectInt(o.port, `${where}.port`),
+    user: expectStr(o.user, `${where}.user`),
+    pass: expectStr(o.pass, `${where}.pass`),
+    tls: typeof o.tls === "boolean" ? o.tls : true,
+  };
+}""",
+            """function parseSmtp(raw: unknown, where: string, allowEmptyPass = false): SmtpCreds { // """
+            + MARKER_OAUTH
+            + """
+  if (!raw || typeof raw !== "object") {
+    throw new AccountsStoreError(`${where} must be an object`);
+  }
+  const o = raw as Record<string, unknown>;
+  return {
+    host: expectStr(o.host, `${where}.host`),
+    port: expectInt(o.port, `${where}.port`),
+    user: expectStr(o.user, `${where}.user`),
+    pass: allowEmptyPass && (o.pass === "" || o.pass === undefined) ? "" : expectStr(o.pass, `${where}.pass`),
+    tls: typeof o.tls === "boolean" ? o.tls : true,
+  };
+}""",
+            1,
+        )
+        accounts.write_text(text, encoding="utf-8")
+        print("patched: accounts.ts (oauth)")
+    else:
+        print("already patched: accounts.ts (oauth)")
+
+    imap = src / "imap-client.ts"
+    text = imap.read_text(encoding="utf-8")
+    if MARKER_OAUTH not in text:
+        text = text.replace(
+            """export interface ImapAuth {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  secure: boolean;
+}
+""",
+            """export interface ImapAuth {
+  host: string;
+  port: number;
+  user: string;
+  pass?: string;
+  accessToken?: string; // """
+            + MARKER_OAUTH
+            + """
+  secure: boolean;
+}
+""",
+            1,
+        )
+        text = text.replace(
+            """  constructor(auth: ImapAuth) {
+    this.opts = {
+      host: auth.host,
+      port: auth.port,
+      secure: auth.secure,
+      auth: { user: auth.user, pass: auth.pass },
+      logger: false,
+    };
+  }
+""",
+            """  private tokenRefresh?: () => Promise<{ user: string; accessToken: string }>; // """
+            + MARKER_OAUTH
+            + """
+
+  constructor(auth: ImapAuth, tokenRefresh?: () => Promise<{ user: string; accessToken: string }>) {
+    this.tokenRefresh = tokenRefresh;
+    this.opts = {
+      host: auth.host,
+      port: auth.port,
+      secure: auth.secure,
+      auth: auth.accessToken
+        ? { user: auth.user, accessToken: auth.accessToken }
+        : { user: auth.user, pass: auth.pass ?? "" },
+      logger: false,
+    };
+  }
+""",
+            1,
+        )
+        text = text.replace(
+            """  private async ensureConnected(): Promise<ImapFlow> {
+    if (this.client && this.client.usable) return this.client;
+    if (this.connecting) return this.connecting;
+    this.connecting = (async (): Promise<ImapFlow> => {
+      const client = new ImapFlow(this.opts);
+""",
+            """  private async ensureConnected(): Promise<ImapFlow> {
+    if (this.client && this.client.usable) return this.client;
+    if (this.connecting) return this.connecting;
+    this.connecting = (async (): Promise<ImapFlow> => {
+      if (this.tokenRefresh) { // """
+            + MARKER_OAUTH
+            + """
+        const t = await this.tokenRefresh();
+        this.opts.auth = { user: t.user, accessToken: t.accessToken };
+      }
+      const client = new ImapFlow(this.opts);
+""",
+            1,
+        )
+        imap.write_text(text, encoding="utf-8")
+        print("patched: imap-client.ts (oauth)")
+    else:
+        print("already patched: imap-client.ts (oauth)")
+
+    smtp = src / "smtp-client.ts"
+    text = smtp.read_text(encoding="utf-8")
+    if MARKER_OAUTH not in text:
+        text = text.replace(
+            """export interface SmtpAuth {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  secure: boolean;
+}
+""",
+            """export interface SmtpAuth {
+  host: string;
+  port: number;
+  user: string;
+  pass?: string;
+  accessToken?: string; // """
+            + MARKER_OAUTH
+            + """
+  secure: boolean;
+}
+""",
+            1,
+        )
+        text = text.replace(
+            """export class SmtpClient {
+  private readonly transporter: Transporter;
+  private readonly defaults: SmtpDefaults;
+
+  constructor(auth: SmtpAuth, defaults: SmtpDefaults) {
+    this.transporter = nodemailer.createTransport({
+      host: auth.host,
+      port: auth.port,
+      secure: auth.secure,
+      auth: { user: auth.user, pass: auth.pass },
+    });
+    this.defaults = defaults;
+  }
+
+  async send(msg: OutgoingMessage): Promise<SendResult> {
+    const mail = this.toMailOptions(msg);
+    const info = await this.transporter.sendMail(mail);
+""",
+            """export class SmtpClient {
+  private transporter: Transporter;
+  private readonly defaults: SmtpDefaults;
+  private readonly auth: SmtpAuth;
+  private tokenRefresh?: () => Promise<{ user: string; accessToken: string }>; // """
+            + MARKER_OAUTH
+            + """
+
+  constructor(
+    auth: SmtpAuth,
+    defaults: SmtpDefaults,
+    tokenRefresh?: () => Promise<{ user: string; accessToken: string }>
+  ) {
+    this.auth = auth;
+    this.tokenRefresh = tokenRefresh;
+    this.defaults = defaults;
+    this.transporter = this.buildTransport(auth);
+  }
+
+  private buildTransport(auth: SmtpAuth): Transporter { // """
+            + MARKER_OAUTH
+            + """
+    const port = auth.port;
+    const secure = Boolean(auth.secure) && port === 465;
+    return nodemailer.createTransport({
+      host: auth.host,
+      port,
+      secure,
+      requireTLS: !secure && Boolean(auth.secure),
+      auth: auth.accessToken
+        ? { user: auth.user, accessToken: auth.accessToken, method: "XOAUTH2" }
+        : { user: auth.user, pass: auth.pass ?? "" },
+    });
+  }
+
+  async send(msg: OutgoingMessage): Promise<SendResult> {
+    if (this.tokenRefresh) { // """
+            + MARKER_OAUTH
+            + """
+      const t = await this.tokenRefresh();
+      this.transporter = this.buildTransport({ ...this.auth, user: t.user, accessToken: t.accessToken, pass: undefined });
+    }
+    const mail = this.toMailOptions(msg);
+    const info = await this.transporter.sendMail(mail);
+""",
+            1,
+        )
+        smtp.write_text(text, encoding="utf-8")
+        print("patched: smtp-client.ts (oauth)")
+    else:
+        print("already patched: smtp-client.ts (oauth)")
+
+    pool = src / "client-pool.ts"
+    text = pool.read_text(encoding="utf-8")
+    if MARKER_OAUTH not in text:
+        if 'from "./oauth-tokens.js"' not in text:
+            text = text.replace(
+                'import { Account, AccountsStore } from "./accounts.js";\n',
+                'import { Account, AccountsStore } from "./accounts.js";\n'
+                f'import {{ ensureOAuthAccessToken, accountsFilePath }} from "./oauth-tokens.js"; // {MARKER_OAUTH}\n',
+                1,
+            )
+        old_build = """  private build(account: Account): AccountClients {
+    const imap = new ImapClient({
+      host: account.imap.host,
+      port: account.imap.port,
+      user: account.imap.user,
+      pass: account.imap.pass,
+      secure: account.imap.tls,
+    });
+    const smtp = new SmtpClient(
+      {
+        host: account.smtp.host,
+        port: account.smtp.port,
+        user: account.smtp.user,
+        pass: account.smtp.pass,
+        secure: account.smtp.tls,
+      },
+      {
+        from: account.mail.defaultFrom,
+        fromName: account.mail.defaultFromName || undefined,
+      }
+    );
+"""
+        new_build = """  private build(account: Account): AccountClients {
+    const file = accountsFilePath(); // """ + MARKER_OAUTH + """
+    const useOauth = account.authType === "oauth2" && Boolean(account.oauth?.accessToken);
+    const tokenRefresh = useOauth
+      ? async () => {
+          const fresh = await ensureOAuthAccessToken(account, file);
+          account = fresh;
+          if (!fresh.oauth?.accessToken) throw new Error("OAuth access token missing after refresh");
+          return { user: fresh.imap.user, accessToken: fresh.oauth.accessToken };
+        }
+      : undefined;
+    const imap = new ImapClient(
+      {
+        host: account.imap.host,
+        port: account.imap.port,
+        user: account.imap.user,
+        pass: useOauth ? undefined : account.imap.pass,
+        accessToken: useOauth ? account.oauth!.accessToken : undefined,
+        secure: account.imap.tls,
+      },
+      tokenRefresh
+    );
+    const smtp = new SmtpClient(
+      {
+        host: account.smtp.host,
+        port: account.smtp.port,
+        user: account.smtp.user,
+        pass: useOauth ? undefined : account.smtp.pass,
+        accessToken: useOauth ? account.oauth!.accessToken : undefined,
+        secure: account.smtp.tls,
+      },
+      {
+        from: account.mail.defaultFrom,
+        fromName: account.mail.defaultFromName || undefined,
+      },
+      tokenRefresh
+    );
+"""
+        if old_build not in text:
+            raise SystemExit("ERROR: client-pool build block not found")
+        text = text.replace(old_build, new_build, 1)
+        pool.write_text(text, encoding="utf-8")
+        print("patched: client-pool.ts (oauth)")
+    else:
+        print("already patched: client-pool.ts (oauth)")
 
 
 if __name__ == "__main__":

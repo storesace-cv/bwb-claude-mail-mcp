@@ -1,6 +1,7 @@
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
 import type { Account } from "./accounts.js";
+import { ensureFreshAccessToken } from "./mail-oauth.js";
 
 export interface ConnTestResult {
   ok: boolean;
@@ -62,9 +63,56 @@ function pickFolder(
   return null;
 }
 
+function humanizeAuthError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/5\.7\.139|basic authentication is disabled/i.test(msg)) {
+    return `${msg} — esta conta exige OAuth (escolhe Outlook/Gmail e «Ligar com…»).`;
+  }
+  if (/Invalid login|AUTHENTICATIONFAILED|Command failed/i.test(msg)) {
+    return `${msg} — verifica credenciais ou volta a autorizar OAuth.`;
+  }
+  return msg;
+}
+
+function imapAuth(account: Account): { user: string; pass?: string; accessToken?: string } {
+  if (account.authType === "oauth2" && account.oauth?.accessToken) {
+    return { user: account.imap.user, accessToken: account.oauth.accessToken };
+  }
+  return { user: account.imap.user, pass: account.imap.pass };
+}
+
+function smtpAuth(account: Account): {
+  user: string;
+  pass?: string;
+  accessToken?: string;
+  method?: string;
+} {
+  if (account.authType === "oauth2" && account.oauth?.accessToken) {
+    return {
+      user: account.smtp.user,
+      accessToken: account.oauth.accessToken,
+      method: "XOAUTH2",
+    };
+  }
+  return { user: account.smtp.user, pass: account.smtp.pass };
+}
+
 export async function testMailConnections(account: Account): Promise<ConnTestResult> {
-  const imap = await testImap(account);
-  const smtp = await testSmtp(account);
+  let acc = account;
+  if (acc.authType === "oauth2") {
+    try {
+      acc = await ensureFreshAccessToken(acc);
+    } catch (err) {
+      const detail = humanizeAuthError(err);
+      return {
+        ok: false,
+        imap: { ok: false, detail },
+        smtp: { ok: false, detail },
+      };
+    }
+  }
+  const imap = await testImap(acc);
+  const smtp = await testSmtp(acc);
   return {
     ok: imap.ok && smtp.ok,
     imap: { ok: imap.ok, detail: imap.detail },
@@ -82,7 +130,7 @@ async function testImap(account: Account): Promise<{
     host: account.imap.host,
     port: account.imap.port,
     secure: account.imap.tls,
-    auth: { user: account.imap.user, pass: account.imap.pass },
+    auth: imapAuth(account),
     logger: false,
     connectionTimeout: 20_000,
     greetingTimeout: 20_000,
@@ -135,7 +183,7 @@ async function testImap(account: Account): Promise<{
     } catch {
       /* ignore */
     }
-    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+    return { ok: false, detail: humanizeAuthError(err) };
   }
 }
 
@@ -147,7 +195,7 @@ async function testSmtp(account: Account): Promise<{ ok: boolean; detail: string
     port,
     secure,
     requireTLS: !secure && account.smtp.tls,
-    auth: { user: account.smtp.user, pass: account.smtp.pass },
+    auth: smtpAuth(account),
     connectionTimeout: 20_000,
     greetingTimeout: 20_000,
     socketTimeout: 20_000,
@@ -156,7 +204,7 @@ async function testSmtp(account: Account): Promise<{ ok: boolean; detail: string
     await transport.verify();
     return { ok: true, detail: "Ligação OK (AUTH aceite)" };
   } catch (err) {
-    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+    return { ok: false, detail: humanizeAuthError(err) };
   } finally {
     transport.close();
   }

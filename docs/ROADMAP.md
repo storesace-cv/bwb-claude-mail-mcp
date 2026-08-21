@@ -13,8 +13,9 @@
 - [x] DNS `mcp-whatsapp.bwb.pt`; Go + uv; user `whatsappmcp`
 - [x] OAuth shim + `/admin` with QR pairing
 - [x] Streamable HTTP session header proxy fix (Claude Desktop)
-- [x] **Dual accounts**: slots `a` (Pessoal) + `b` (Negócio), 2 cartões no admin, connectors `/a/mcp` + `/b/mcp`
+- [x] **Dual accounts**: slots `a` (Pessoal) + `b` (Angola), 2 cartões no admin, connectors `/a/mcp` + `/b/mcp`
 - [x] Migração store legado → `accounts/a/store`
+- [x] Admin self-serve: rename, re-pair, logs copy/download (sem SSH)
 
 ## Done (2026-08-21)
 
@@ -27,17 +28,27 @@
 - [x] Docs: `HANDOFF-IMPLEMENTACAO-HELPDECK-CONTEXT.md`, `CLAUDE-AI-HELPDECK-EMAIL.md`
 - [x] OTOBO: `X-BWB-*` + `PublicBWBTicketContext` + token files
 
+### Mail provider OAuth + presets
+
+- [x] Tipo de conta na admin: genérico / Microsoft pessoal / Gmail pessoal / iCloud
+- [x] OAuth2 XOAUTH2 Outlook.com (tenant `consumers`) + Gmail pessoal
+- [x] iCloud: preset hosts + senha de aplicação
+- [x] Patch upstream: parse oauth, ImapFlow/nodemailer accessToken, refresh tokens
+- [x] Docs ops: registo Azure/Google + env `MICROSOFT_*` / `GOOGLE_*`
+
 ## Next
 
-- [ ] Pair / validate conta Negócio (`b`) se ainda sem sessão
-- [ ] Claude Desktop: `bwb-whatsapp` → `/a/mcp`; adicionar `bwb-whatsapp-negocio` → `/b/mcp`
+- [ ] Registar apps Azure (pessoal) + Google Cloud e preencher secrets no VPS
+- [ ] Smoke: ligar conta Outlook.com + Gmail reais na admin
 - [ ] Encrypted off-host backup of `/var/lib/mail-mcp/` and `/var/lib/whatsapp-mcp/accounts/`
 - [ ] AUTH_TOKEN rotation schedule (90 days)
+- [ ] Assistente Claude config na admin (cola JSON → merge connectors)
 - [ ] Opcional: CalDAV na conta `bwb-pessoal`; `list_threads` / search multi-pasta (upstream v0.3+)
 
 ## Out of scope (for now)
 
-- Dynamic N accounts CRUD beyond fixed a/b
+- Microsoft 365 trabalho/escola (tenant) / Google Workspace empresarial
+- Dynamic N accounts CRUD beyond fixed a/b (WhatsApp)
 - Single Claude connector that switches accounts
 - WhatsApp webhooks / bulk messaging
 - IMAP on PostMaster intake mailboxes

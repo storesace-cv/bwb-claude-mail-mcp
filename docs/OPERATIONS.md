@@ -50,6 +50,37 @@ After changing `.env`: `systemctl restart claude-mail-mcp.service`. Docs: `HANDO
 
 Tools BWB no backend patched: `helpdesk_ticket_context`, `create_folder`, `copy_message`, `rename_folder`, `delete_folder`, `mark_flagged`, `folder_status`, `get_attachment`, `update_event`, `delete_event` (além das tools mail/calendar do upstream).
 
+### Contas Mail — fornecedores e OAuth
+
+Na admin (`/admin/accounts/new`) escolhe o tipo:
+
+| Tipo | Auth |
+|------|------|
+| Servidor normal | user + password |
+| Outlook.com / Hotmail (pessoal) | OAuth2 («Ligar com Microsoft») |
+| Gmail (pessoal) | OAuth2 («Ligar com Google») |
+| iCloud | senha de aplicação Apple |
+
+Redirect URIs a registar nas consoles:
+
+- `https://mcp-mail.bwb.pt/admin/oauth/microsoft/callback`
+- `https://mcp-mail.bwb.pt/admin/oauth/google/callback`
+
+Env (shim **e** backend `claude-mail-mcp`):
+
+```bash
+MICROSOFT_CLIENT_ID=...
+MICROSOFT_CLIENT_SECRET=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
+
+**Microsoft Entra:** app «Accounts in any personal Microsoft account only»; scopes delegados `IMAP.AccessAsUser.All`, `SMTP.Send` (+ `offline_access` no authorize). Authorize via tenant `consumers`.
+
+**Google Cloud:** OAuth client Web; scope `https://mail.google.com/`; consent External (test users ou production).
+
+Depois de alterar `.env`: `systemctl restart mcp-oauth-shim-mail claude-mail-mcp`.
+
 ## Services
 
 ```bash
