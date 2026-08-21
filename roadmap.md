@@ -1,25 +1,40 @@
 # Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the full checklist.
+## Done (2026-08-20)
 
-## Status (2026-08-20)
+### MCP Mail
 
-### MCP Mail Self-Hosted + Backoffice — live
+- [x] VPS Ubuntu 24.04 hardened; DNS `mcp-mail.bwb.pt`
+- [x] `claude-mail-mcp` + OAuth shim + `/admin`
+- [x] nginx + Let's Encrypt; smoke tests
 
-- `https://mcp-mail.bwb.pt` — OAuth shim + `/admin`
-- Units: `claude-mail-mcp`, `mcp-oauth-shim-mail`
+### MCP WhatsApp (cohabitation)
 
-### MCP WhatsApp Self-Hosted + Backoffice — dual accounts live
+- [x] DNS `mcp-whatsapp.bwb.pt`; Go + uv; user `whatsappmcp`
+- [x] OAuth shim + `/admin` with QR pairing
+- [x] Streamable HTTP session header proxy fix (Claude Desktop)
+- [x] **Dual accounts**: slots `a` (Pessoal) + `b` (Negócio), 2 cartões no admin, connectors `/a/mcp` + `/b/mcp`
+- [x] Migração store legado → `accounts/a/store`
 
-- `https://mcp-whatsapp.bwb.pt/admin` — **2 cartões** (Pessoal `a` + Negócio `b`)
-- Claude connectors:
-  - Pessoal: `https://mcp-whatsapp.bwb.pt/a/mcp` (alias legado `/mcp` → `a`)
-  - Negócio: `https://mcp-whatsapp.bwb.pt/b/mcp`
-- Units: `whatsapp-bridge-a/b`, `whatsapp-mcp-a/b`, `mcp-oauth-shim-whatsapp`
-- Stores: `/var/lib/whatsapp-mcp/accounts/{a,b}/store/`
+## Done (2026-08-21)
 
-**Operator next steps:**
+### Helpdesk email context
 
-1. Pair conta Negócio (`b`) via QR no admin (se ainda não associada)
-2. Claude Desktop / Claude.ai: connector A = `/a/mcp`, connector B = `/b/mcp`
-3. Encrypted backup de `/var/lib/whatsapp-mcp/accounts/`
+- [x] Patches `mail-v0.2.1`: `get_message` → `bwb` + `headersRelevant`; tool `helpdesk_ticket_context`
+- [x] Docs: `HANDOFF-IMPLEMENTACAO-HELPDECK-CONTEXT.md`, `CLAUDE-AI-HELPDECK-EMAIL.md`
+- [x] OTOBO counterpart: `X-BWB-*` + `PublicBWBTicketContext` (repo `bwb-otobo-custom`)
+
+## Next
+
+- [ ] Pair / validate conta Negócio (`b`) se ainda sem sessão
+- [ ] Claude Desktop: `bwb-whatsapp` → `/a/mcp`; adicionar `bwb-whatsapp-negocio` → `/b/mcp`
+- [ ] Encrypted off-host backup of `/var/lib/mail-mcp/` and `/var/lib/whatsapp-mcp/accounts/`
+- [ ] AUTH_TOKEN rotation schedule (90 days)
+- [x] Configure `HELPDESK_CONTEXT_*` + OTOBO token files in production; API smoke OK
+
+## Out of scope (for now)
+
+- Dynamic N accounts CRUD beyond fixed a/b
+- Single Claude connector that switches accounts
+- WhatsApp webhooks / bulk messaging
+- IMAP on PostMaster intake mailboxes

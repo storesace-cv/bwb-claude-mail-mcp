@@ -30,7 +30,7 @@
 - [ ] Claude Desktop: `bwb-whatsapp` → `/a/mcp`; adicionar `bwb-whatsapp-negocio` → `/b/mcp`
 - [ ] Encrypted off-host backup of `/var/lib/mail-mcp/` and `/var/lib/whatsapp-mcp/accounts/`
 - [ ] AUTH_TOKEN rotation schedule (90 days)
-- [ ] Configure `HELPDESK_CONTEXT_*` + OTOBO `ZZZBWBTicketContext.pm` in production and e2e test
+- [x] Configure `HELPDESK_CONTEXT_*` + OTOBO token files in production; API smoke OK
 
 ## Out of scope (for now)
 
