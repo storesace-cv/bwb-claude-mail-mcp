@@ -56,9 +56,9 @@ curl -sS -H "Authorization: Bearer TOKEN" \
 
 | Path | Papel |
 |---|---|
-| `deploy/patches/mail-v0.2.1/apply.py` | Patches idempotentes no upstream v0.2.1 |
+| `deploy/patches/mail-v0.2.1/apply.py` | Patches idempotentes no upstream v0.2.1 (helpdesk + `create_folder`) |
 | `deploy/patches/mail-v0.2.1/helpdesk-enrich.ts` | Parser Ticket# / X-BWB-* |
-| `deploy/patches/mail-v0.2.1/tools-helpdesk.ts` | Tool MCP |
+| `deploy/patches/mail-v0.2.1/tools-helpdesk.ts` | Tool MCP `helpdesk_ticket_context` |
 | `deploy/install.sh` | Corre `apply.py` após `git checkout` |
 
 No VPS MCP, em `/var/www/mail-mcp/.env`:

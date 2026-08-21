@@ -23,6 +23,8 @@
 - [x] Patches `mail-v0.2.1`: `get_message` → `bwb` + `headersRelevant`; tool `helpdesk_ticket_context`
 - [x] Docs: `HANDOFF-IMPLEMENTACAO-HELPDECK-CONTEXT.md`, `CLAUDE-AI-HELPDECK-EMAIL.md`
 - [x] OTOBO counterpart: `X-BWB-*` + `PublicBWBTicketContext` (repo `bwb-otobo-custom`)
+- [x] Configure `HELPDESK_CONTEXT_*` + OTOBO token files in production; API smoke OK
+- [x] Tool `create_folder` (IMAP CREATE + SUBSCRIBE, idempotente) no mesmo patch set
 
 ## Next
 
@@ -30,7 +32,6 @@
 - [ ] Claude Desktop: `bwb-whatsapp` → `/a/mcp`; adicionar `bwb-whatsapp-negocio` → `/b/mcp`
 - [ ] Encrypted off-host backup of `/var/lib/mail-mcp/` and `/var/lib/whatsapp-mcp/accounts/`
 - [ ] AUTH_TOKEN rotation schedule (90 days)
-- [x] Configure `HELPDESK_CONTEXT_*` + OTOBO token files in production; API smoke OK
 
 ## Out of scope (for now)
 
@@ -38,3 +39,4 @@
 - Single Claude connector that switches accounts
 - WhatsApp webhooks / bulk messaging
 - IMAP on PostMaster intake mailboxes
+- `delete_folder` / `rename_folder`

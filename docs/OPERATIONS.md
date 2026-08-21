@@ -48,6 +48,8 @@
 
 After changing `.env`: `systemctl restart claude-mail-mcp.service`. Docs: `HANDOFF-IMPLEMENTACAO-HELPDECK-CONTEXT.md`, `CLAUDE-AI-HELPDECK-EMAIL.md`.
 
+Tools BWB no backend patched: `helpdesk_ticket_context`, `create_folder` (além das tools mail/calendar do upstream).
+
 ## Services
 
 ```bash
