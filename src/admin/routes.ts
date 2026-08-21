@@ -456,7 +456,10 @@ function accountForm(opts: {
          ${
            oauthReady
              ? `<p><a class="btn" href="${esc(oauthHref)}" id="oauth-link">${esc(oauthBtnLabel)}</a></p>`
-             : `<p class="error">OAuth ${esc(provider)} não configurado no servidor (faltam CLIENT_ID/SECRET no .env).</p>`
+             : `<div class="error" style="margin:0">
+                  <p><strong>«Ligar com Microsoft» ainda não pode abrir o consentimento</strong> — faltam as credenciais OAuth no servidor (MICROSOFT_CLIENT_ID / SECRET).</p>
+                  <p class="muted" style="margin:0.5rem 0 0">Isto é um registo único na Azure (não é senha de aplicação). Depois de configurares, o botão passa a abrir o login Microsoft e o pedido de permissões.</p>
+                </div>`
          }
        </div>
        <div class="row">
