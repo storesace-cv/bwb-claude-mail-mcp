@@ -85,16 +85,16 @@ function imapAuth(account: Account): { user: string; pass?: string; accessToken?
 }
 
 function smtpAuth(account: Account): {
+  type?: string;
   user: string;
   pass?: string;
   accessToken?: string;
-  method?: string;
 } {
   if (account.authType === "oauth2" && account.oauth?.accessToken) {
     return {
+      type: "OAuth2",
       user: account.smtp.user,
       accessToken: account.oauth.accessToken,
-      method: "XOAUTH2",
     };
   }
   return { user: account.smtp.user, pass: account.smtp.pass };
@@ -202,7 +202,7 @@ async function testSmtp(account: Account): Promise<{ ok: boolean; detail: string
     connectionTimeout: 20_000,
     greetingTimeout: 20_000,
     socketTimeout: 20_000,
-  });
+  } as Parameters<typeof nodemailer.createTransport>[0]);
   try {
     await transport.verify();
     return { ok: true, detail: "Ligação OK (AUTH aceite)" };

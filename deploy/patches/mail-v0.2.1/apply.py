@@ -1000,7 +1000,7 @@ function parseOAuth(raw: unknown, where: string): AccountOAuth { // """ + MARKER
       secure,
       requireTLS: !secure && Boolean(auth.secure),
       auth: auth.accessToken
-        ? { user: auth.user, accessToken: auth.accessToken, method: "XOAUTH2" }
+        ? { type: "OAuth2", user: auth.user, accessToken: auth.accessToken }
         : { user: auth.user, pass: auth.pass ?? "" },
     });
   }
