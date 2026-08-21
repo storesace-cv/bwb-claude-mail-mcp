@@ -18,13 +18,14 @@
 
 ## Done (2026-08-21)
 
-### Helpdesk email context
+### Helpdesk email context + mail completeness
 
 - [x] Patches `mail-v0.2.1`: `get_message` → `bwb` + `headersRelevant`; tool `helpdesk_ticket_context`
+- [x] Tool `create_folder` (CREATE + SUBSCRIBE)
+- [x] Tools: `copy_message`, `rename_folder`, `delete_folder`, `mark_flagged`, `folder_status`, `get_attachment`
+- [x] Calendar: `update_event`, `delete_event` (requerem CalDAV na conta)
 - [x] Docs: `HANDOFF-IMPLEMENTACAO-HELPDECK-CONTEXT.md`, `CLAUDE-AI-HELPDECK-EMAIL.md`
-- [x] OTOBO counterpart: `X-BWB-*` + `PublicBWBTicketContext` (repo `bwb-otobo-custom`)
-- [x] Configure `HELPDESK_CONTEXT_*` + OTOBO token files in production; API smoke OK
-- [x] Tool `create_folder` (IMAP CREATE + SUBSCRIBE, idempotente) no mesmo patch set
+- [x] OTOBO: `X-BWB-*` + `PublicBWBTicketContext` + token files
 
 ## Next
 
@@ -32,6 +33,7 @@
 - [ ] Claude Desktop: `bwb-whatsapp` → `/a/mcp`; adicionar `bwb-whatsapp-negocio` → `/b/mcp`
 - [ ] Encrypted off-host backup of `/var/lib/mail-mcp/` and `/var/lib/whatsapp-mcp/accounts/`
 - [ ] AUTH_TOKEN rotation schedule (90 days)
+- [ ] Opcional: CalDAV na conta `bwb-pessoal`; `list_threads` / search multi-pasta (upstream v0.3+)
 
 ## Out of scope (for now)
 
@@ -39,4 +41,4 @@
 - Single Claude connector that switches accounts
 - WhatsApp webhooks / bulk messaging
 - IMAP on PostMaster intake mailboxes
-- `delete_folder` / `rename_folder`
+- CardDAV contacts / JMAP

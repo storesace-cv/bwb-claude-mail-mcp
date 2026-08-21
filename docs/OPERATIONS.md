@@ -48,7 +48,7 @@
 
 After changing `.env`: `systemctl restart claude-mail-mcp.service`. Docs: `HANDOFF-IMPLEMENTACAO-HELPDECK-CONTEXT.md`, `CLAUDE-AI-HELPDECK-EMAIL.md`.
 
-Tools BWB no backend patched: `helpdesk_ticket_context`, `create_folder` (além das tools mail/calendar do upstream).
+Tools BWB no backend patched: `helpdesk_ticket_context`, `create_folder`, `copy_message`, `rename_folder`, `delete_folder`, `mark_flagged`, `folder_status`, `get_attachment`, `update_event`, `delete_event` (além das tools mail/calendar do upstream).
 
 ## Services
 

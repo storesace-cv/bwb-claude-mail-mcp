@@ -30,7 +30,9 @@ def main() -> int:
 
     shutil.copyfile(HERE / "helpdesk-enrich.ts", src / "helpdesk-enrich.ts")
     shutil.copyfile(HERE / "tools-helpdesk.ts", src / "tools-helpdesk.ts")
-    print("copied helpdesk-enrich.ts and tools-helpdesk.ts")
+    shutil.copyfile(HERE / "tools-mail-complete.ts", src / "tools-mail-complete.ts")
+    shutil.copyfile(HERE / "tools-calendar-complete.ts", src / "tools-calendar-complete.ts")
+    print("copied helpdesk + mail-complete + calendar-complete sources")
 
     # --- imap-client.ts ---
     imap = src / "imap-client.ts"
@@ -184,13 +186,17 @@ def main() -> int:
         itext = itext.replace(
             'import { registerCalendarTools } from "./tools-calendar.js";\n',
             'import { registerCalendarTools } from "./tools-calendar.js";\n'
-            f'import {{ registerHelpdeskTools }} from "./tools-helpdesk.js"; // {MARKER}\n',
+            f'import {{ registerHelpdeskTools }} from "./tools-helpdesk.js"; // {MARKER}\n'
+            f'import {{ registerMailCompleteTools }} from "./tools-mail-complete.js"; // {MARKER}\n'
+            f'import {{ registerCalendarCompleteTools }} from "./tools-calendar-complete.js"; // {MARKER}\n',
             1,
         )
         itext = itext.replace(
             "  registerMailTools(mcp, pool, store);\n  registerCalendarTools(mcp, pool);\n",
             "  registerMailTools(mcp, pool, store);\n  registerCalendarTools(mcp, pool);\n"
-            f"  registerHelpdeskTools(mcp); // {MARKER}\n",
+            f"  registerHelpdeskTools(mcp); // {MARKER}\n"
+            f"  registerMailCompleteTools(mcp, pool); // {MARKER}\n"
+            f"  registerCalendarCompleteTools(mcp, pool); // {MARKER}\n",
             1,
         )
         idx.write_text(itext, encoding="utf-8")
@@ -221,7 +227,9 @@ def main() -> int:
         print("already patched: tools-mail.ts")
 
     apply_create_folder(src)
-    print("OK mail-v0.2.1 helpdesk + create_folder patches applied")
+    apply_mail_complete(src)
+    apply_calendar_complete(src)
+    print("OK mail-v0.2.1 BWB patches applied (helpdesk + folders + complete)")
     return 0
 
 
@@ -402,6 +410,286 @@ def apply_create_folder(src: pathlib.Path) -> None:
         print("patched: tools-mail.ts (create_folder)")
     else:
         print("already patched: tools-mail.ts (create_folder)")
+
+
+MARKER_COMPLETE = "bwb-mail-complete"
+MARKER_CAL = "bwb-calendar-complete"
+
+
+def apply_mail_complete(src: pathlib.Path) -> None:
+    imap = src / "imap-client.ts"
+    text = imap.read_text(encoding="utf-8")
+    if MARKER_COMPLETE not in text:
+        needle = "  private async fetchRange(\n"
+        if needle not in text:
+            raise SystemExit("ERROR: private fetchRange not found for mail-complete")
+        methods = r'''
+  /** Copy message between mailboxes (IMAP COPY). // ''' + MARKER_COMPLETE + r''' */
+  async copyMessage(
+    sourceMailbox: string,
+    uid: number,
+    destinationMailbox: string
+  ): Promise<void> {
+    const client = await this.ensureConnected();
+    const lock = await client.getMailboxLock(sourceMailbox);
+    try {
+      await client.messageCopy(`${uid}`, destinationMailbox, { uid: true });
+    } finally {
+      lock.release();
+    }
+  }
+
+  async renameFolder(
+    path: string,
+    newPath: string
+  ): Promise<{ path: string; new_path: string }> {
+    const from = path.trim();
+    const to = newPath.trim();
+    if (!from || !to) throw new Error("path and new_path are required");
+    if (from.toUpperCase() === "INBOX") {
+      throw new Error("Refusing to rename INBOX");
+    }
+    const client = await this.ensureConnected();
+    await client.mailboxRename(from, to);
+    try {
+      await client.mailboxSubscribe(to);
+    } catch {
+      // best effort
+    }
+    return { path: from, new_path: to };
+  }
+
+  async deleteFolder(path: string): Promise<{ path: string; deleted: boolean }> {
+    const trimmed = path.trim();
+    if (!trimmed) throw new Error("path is required");
+    if (trimmed.toUpperCase() === "INBOX") {
+      throw new Error("Refusing to delete INBOX");
+    }
+    const client = await this.ensureConnected();
+    await client.mailboxDelete(trimmed);
+    return { path: trimmed, deleted: true };
+  }
+
+  async markFlagged(
+    mailbox: string,
+    uid: number,
+    flagged: boolean
+  ): Promise<void> {
+    const client = await this.ensureConnected();
+    const lock = await client.getMailboxLock(mailbox);
+    try {
+      if (flagged) {
+        await client.messageFlagsAdd(`${uid}`, ["\\Flagged"], { uid: true });
+      } else {
+        await client.messageFlagsRemove(`${uid}`, ["\\Flagged"], { uid: true });
+      }
+    } finally {
+      lock.release();
+    }
+  }
+
+  async folderStatus(path: string): Promise<{
+    path: string;
+    messages: number | null;
+    unseen: number | null;
+    uidNext: number | null;
+    uidValidity: number | null;
+  }> {
+    const trimmed = path.trim();
+    if (!trimmed) throw new Error("path is required");
+    const client = await this.ensureConnected();
+    const st = await client.status(trimmed, {
+      messages: true,
+      unseen: true,
+      uidNext: true,
+      uidValidity: true,
+    });
+    return {
+      path: trimmed,
+      messages: st.messages != null ? Number(st.messages) : null,
+      unseen: st.unseen != null ? Number(st.unseen) : null,
+      uidNext: st.uidNext != null ? Number(st.uidNext) : null,
+      uidValidity: st.uidValidity != null ? Number(st.uidValidity) : null,
+    };
+  }
+
+  async getAttachment(
+    mailbox: string,
+    uid: number,
+    opts: { index?: number; filename?: string; maxBytes?: number }
+  ): Promise<{
+    filename: string | null;
+    contentType: string;
+    size: number;
+    encoding: "base64";
+    content_base64: string;
+    truncated: boolean;
+  }> {
+    const maxBytes = opts.maxBytes ?? 5 * 1024 * 1024;
+    const client = await this.ensureConnected();
+    const lock = await client.getMailboxLock(mailbox);
+    try {
+      const msg = await client.fetchOne(
+        `${uid}`,
+        { source: true },
+        { uid: true }
+      );
+      if (!msg) {
+        throw new Error(`Message UID ${uid} not found in ${mailbox}`);
+      }
+      const parsed: ParsedMail = await simpleParser(msg.source as Buffer);
+      const list = parsed.attachments ?? [];
+      if (list.length === 0) {
+        throw new Error("Message has no attachments");
+      }
+      let att = null as (typeof list)[number] | null;
+      if (opts.index !== undefined) {
+        att = list[opts.index] ?? null;
+        if (!att) {
+          throw new Error(
+            `Attachment index ${opts.index} out of range (0..${list.length - 1})`
+          );
+        }
+      } else if (opts.filename) {
+        att =
+          list.find((a) => (a.filename || "") === opts.filename) ??
+          list.find(
+            (a) =>
+              (a.filename || "").toLowerCase() ===
+              (opts.filename || "").toLowerCase()
+          ) ??
+          null;
+        if (!att) {
+          throw new Error(`Attachment filename not found: ${opts.filename}`);
+        }
+      } else {
+        throw new Error("Need index or filename");
+      }
+      const buf = Buffer.isBuffer(att.content)
+        ? att.content
+        : Buffer.from(att.content || []);
+      if (buf.length > maxBytes) {
+        throw new Error(
+          `Attachment is ${buf.length} bytes; max_bytes=${maxBytes}. Increase max_bytes (cap 15MiB) or download outside MCP.`
+        );
+      }
+      return {
+        filename: att.filename ?? null,
+        contentType: att.contentType || "application/octet-stream",
+        size: buf.length,
+        encoding: "base64",
+        content_base64: buf.toString("base64"),
+        truncated: false,
+      };
+    } finally {
+      lock.release();
+    }
+  }
+
+'''
+        imap.write_text(text.replace(needle, methods + needle, 1), encoding="utf-8")
+        print("patched: imap-client.ts (mail-complete)")
+    else:
+        print("already patched: imap-client.ts (mail-complete)")
+
+    # Ensure index registers mail-complete even on older helpdesk-only patches
+    idx = src / "index.ts"
+    itext = idx.read_text(encoding="utf-8")
+    if "registerMailCompleteTools" not in itext:
+        if 'import { registerHelpdeskTools } from "./tools-helpdesk.js";' in itext:
+            itext = itext.replace(
+                'import { registerHelpdeskTools } from "./tools-helpdesk.js"; // bwb-helpdesk-context\n',
+                'import { registerHelpdeskTools } from "./tools-helpdesk.js"; // bwb-helpdesk-context\n'
+                'import { registerMailCompleteTools } from "./tools-mail-complete.js"; // bwb-mail-complete\n'
+                'import { registerCalendarCompleteTools } from "./tools-calendar-complete.js"; // bwb-calendar-complete\n',
+                1,
+            )
+            itext = itext.replace(
+                "  registerHelpdeskTools(mcp); // bwb-helpdesk-context\n",
+                "  registerHelpdeskTools(mcp); // bwb-helpdesk-context\n"
+                "  registerMailCompleteTools(mcp, pool); // bwb-mail-complete\n"
+                "  registerCalendarCompleteTools(mcp, pool); // bwb-calendar-complete\n",
+                1,
+            )
+            idx.write_text(itext, encoding="utf-8")
+            print("patched: index.ts (mail/calendar complete)")
+        else:
+            raise SystemExit("ERROR: cannot register mail-complete tools in index.ts")
+    else:
+        print("already patched: index.ts (mail-complete)")
+
+
+def apply_calendar_complete(src: pathlib.Path) -> None:
+    cal = src / "caldav-client.ts"
+    text = cal.read_text(encoding="utf-8")
+    if MARKER_CAL not in text:
+        needle = """  async createEvent(input: NewEventInput): Promise<{ url: string; uid: string }> {
+    const calendar = await this.findCalendar(input.calendarUrl);
+    const client = await this.ensureClient();
+    const uid = `${randomUUID()}@claude-mail-mcp`;
+    const ics = buildIcs({ ...input, uid });
+    const filename = `${uid}.ics`;
+    await client.createCalendarObject({
+      calendar,
+      filename,
+      iCalString: ics,
+    });
+    const base = calendar.url.endsWith("/") ? calendar.url : `${calendar.url}/`;
+    return { url: `${base}${filename}`, uid };
+  }
+
+  async findFreeSlots(
+"""
+        insert = """  async createEvent(input: NewEventInput): Promise<{ url: string; uid: string }> {
+    const calendar = await this.findCalendar(input.calendarUrl);
+    const client = await this.ensureClient();
+    const uid = `${randomUUID()}@claude-mail-mcp`;
+    const ics = buildIcs({ ...input, uid });
+    const filename = `${uid}.ics`;
+    await client.createCalendarObject({
+      calendar,
+      filename,
+      iCalString: ics,
+    });
+    const base = calendar.url.endsWith("/") ? calendar.url : `${calendar.url}/`;
+    return { url: `${base}${filename}`, uid };
+  }
+
+  /** Delete calendar object by URL. // """ + MARKER_CAL + """ */
+  async deleteEvent(eventUrl: string): Promise<void> {
+    const client = await this.ensureClient();
+    await client.deleteCalendarObject({
+      calendarObject: { url: eventUrl },
+    });
+  }
+
+  /** Replace calendar object contents. // """ + MARKER_CAL + """ */
+  async updateEvent(
+    input: NewEventInput & { eventUrl: string; uid?: string }
+  ): Promise<{ url: string; uid: string }> {
+    const client = await this.ensureClient();
+    const uid =
+      input.uid ||
+      input.eventUrl.split("/").filter(Boolean).pop()?.replace(/\\.ics$/i, "") ||
+      `${randomUUID()}@claude-mail-mcp`;
+    const ics = buildIcs({ ...input, uid });
+    await client.updateCalendarObject({
+      calendarObject: {
+        url: input.eventUrl,
+        data: ics,
+      },
+    });
+    return { url: input.eventUrl, uid };
+  }
+
+  async findFreeSlots(
+"""
+        if needle not in text:
+            raise SystemExit("ERROR: createEvent/findFreeSlots block not found")
+        cal.write_text(text.replace(needle, insert, 1), encoding="utf-8")
+        print("patched: caldav-client.ts (delete/update)")
+    else:
+        print("already patched: caldav-client.ts")
 
 
 if __name__ == "__main__":
