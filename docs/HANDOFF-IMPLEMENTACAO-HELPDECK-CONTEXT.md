@@ -35,21 +35,14 @@ bash scripts/deploy-production.sh --apply
 bash scripts/verify-runtime-permissions.sh --production
 ```
 
-No servidor, criar `/opt/otobo/Kernel/Config/Files/ZZZBWBTicketContext.pm` (otobo:www-data 640):
+No servidor OTOBO, segredos em ficheiros (não SysConfig — `ZZZAAuto` anula PM/XML):
 
-```perl
-package Kernel::Config::Files::ZZZBWBTicketContext;
-use strict; use warnings;
-sub Load {
-  my ($File, $Self) = @_;
-  $Self->{'BWBTicketContext::BearerToken'} = 'TOKEN_OPENSSL_RAND_HEX_32';
-  $Self->{'BWBTicketContext::AllowedIPs'} = [ 'IP_VPS_MCP_MAIL' ];
-  return 1;
-}
-1;
+```sh
+openssl rand -hex 32 | tee /opt/otobo/var/bwb-ticket-context.token
+printf '%s\n' '178.159.34.165' > /opt/otobo/var/bwb-ticket-context.allowed-ips
+chown otobo:www-data /opt/otobo/var/bwb-ticket-context.token /opt/otobo/var/bwb-ticket-context.allowed-ips
+chmod 640 /opt/otobo/var/bwb-ticket-context.token /opt/otobo/var/bwb-ticket-context.allowed-ips
 ```
-
-Depois: `Maint::Config::Rebuild`, reaplicar permissões `ZZZAAuto.pm` / `ZZZBWB*.pm`, `Maint::Cache::Delete`.
 
 Teste:
 
