@@ -843,7 +843,31 @@ function parseOAuth(raw: unknown, where: string): AccountOAuth { // """ + MARKER
         accounts.write_text(text, encoding="utf-8")
         print("patched: accounts.ts (oauth)")
     else:
-        print("already patched: accounts.ts (oauth)")
+        # Repair: early deploys left parseSmtp without allowEmptyPass on pass
+        text = accounts.read_text(encoding="utf-8")
+        idx = text.find("function parseSmtp")
+        idx2 = text.find("function parseMail", idx) if idx >= 0 else -1
+        if idx >= 0 and idx2 > idx:
+            block = text[idx:idx2]
+            if 'allowEmptyPass && (o.pass === "" || o.pass === undefined)' not in block:
+                needle = "pass: expectStr(o.pass, `${where}.pass`),"
+                if needle in block:
+                    accounts.write_text(
+                        text[:idx]
+                        + block.replace(
+                            needle,
+                            'pass: allowEmptyPass && (o.pass === "" || o.pass === undefined) ? "" : expectStr(o.pass, `${where}.pass`),',
+                            1,
+                        )
+                        + text[idx2:]
+                    )
+                    print("repaired: accounts.ts parseSmtp allowEmptyPass")
+                else:
+                    print("already patched: accounts.ts (oauth)")
+            else:
+                print("already patched: accounts.ts (oauth)")
+        else:
+            print("already patched: accounts.ts (oauth)")
 
     imap = src / "imap-client.ts"
     text = imap.read_text(encoding="utf-8")
