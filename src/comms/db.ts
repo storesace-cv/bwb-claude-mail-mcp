@@ -147,8 +147,30 @@ function migrate(database: Database.Database): void {
       path TEXT NOT NULL,
       PRIMARY KEY (account_id, path)
     );
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
   migrateWaWatchGroups(database);
+  const days = database.prepare("SELECT value FROM app_settings WHERE key = 'mail_max_age_days'").get() as
+    | { value: string }
+    | undefined;
+  if (!days) {
+    database.prepare("INSERT INTO app_settings (key, value) VALUES ('mail_max_age_days', '365')").run();
+  }
+  const tenant = database.prepare("SELECT value FROM app_settings WHERE key = 's3_tenant_id'").get() as
+    | { value: string }
+    | undefined;
+  if (!tenant) {
+    database.prepare("INSERT INTO app_settings (key, value) VALUES ('s3_tenant_id', 'jorgepeixinho')").run();
+  }
+  const stage = database.prepare("SELECT value FROM app_settings WHERE key = 'invoice_whitelist_stage'").get() as
+    | { value: string }
+    | undefined;
+  if (!stage) {
+    database.prepare("INSERT INTO app_settings (key, value) VALUES ('invoice_whitelist_stage', 'seed')").run();
+  }
 }
 
 export function getCursor(key: string): string | null {

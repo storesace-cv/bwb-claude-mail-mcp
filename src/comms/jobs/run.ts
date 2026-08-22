@@ -5,6 +5,7 @@ import { syncAllMail } from "../mail/sync.js";
 import { runAgtKb, runAgtKbIfDue } from "../whatsapp/agt-kb.js";
 import { syncAllWhatsapp } from "../whatsapp/sync.js";
 import { jobError, jobLog, jobProgress, jobStep } from "./progress.js";
+import { mailAttachmentGateError } from "../settings.js";
 
 export interface JobResult {
   name: string;
@@ -14,6 +15,11 @@ export interface JobResult {
 
 export async function runMailPipeline(): Promise<JobResult[]> {
   const results: JobResult[] = [];
+  const gate = mailAttachmentGateError();
+  if (gate) {
+    jobError(gate);
+    return [{ name: "mail-sync", ok: false, detail: gate }];
+  }
   jobStep("sync", "Ler mensagens novas");
   jobLog("A iniciar leitura das caixas de correio.");
   try {

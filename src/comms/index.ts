@@ -3,12 +3,39 @@ import cookieParser from "cookie-parser";
 import { ensureAdminBootstrap } from "./admin-store.js";
 import { commsConfig } from "./config.js";
 import { getDb } from "./db.js";
+import { mailAttachmentGateError } from "./settings.js";
+import { migrateLocalInvoicesToS3, migrateLocalWhatsappAgtToS3 } from "./storage.js";
 import { startSchedulers } from "./jobs/run.js";
 import { handleMcp } from "./mcp.js";
 import { adminRouter } from "./ui/routes.js";
 
 async function main(): Promise<void> {
   getDb();
+  if (!mailAttachmentGateError()) {
+    try {
+      const inv = await migrateLocalInvoicesToS3();
+      const wa = await migrateLocalWhatsappAgtToS3();
+      console.log(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "info",
+          msg: "s3 attachment migrate",
+          invoicesMoved: inv.moved,
+          invoicesSkipped: inv.skipped,
+          waMoved: wa.moved,
+        })
+      );
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
+          msg: "s3 attachment migrate failed",
+          error: err instanceof Error ? err.message : String(err),
+        })
+      );
+    }
+  }
   await ensureAdminBootstrap({
     name: process.env.BOOTSTRAP_ADMIN_NAME ?? "Jorge Peixinho",
     email: process.env.BOOTSTRAP_ADMIN_EMAIL ?? "jorge.peixinho@bwb.pt",

@@ -42,7 +42,9 @@
 
 - [x] Serviço `bwb-comms` no mesmo VPS (`comms.bwb.pt`): jobs IMAP + SQLite + UI admin
 - [x] Unanswered por thread, digest SMTP, regras de pasta (move IMAP nosso)
-- [x] Facturas: anexos PDF/imagem → disco + texto PDF local
+- [x] Facturas: anexos PDF/imagem → texto PDF; persistência S3 Euronodes (`comms/<tenant>/invoices/…`); listas brancas no documento; tenant em Definições (`jorgepeixinho`)
+- [x] Dashboard `/admin`; correio não respondido em `/admin/mails` (IMAP delete, criar regra)
+- [x] WhatsApp: allowlist + sync read-only `whatsapp.db` a/b; prefixo S3 `…/whatsapp/` para anexos
 - [x] WhatsApp: allowlist + sync read-only `whatsapp.db` a/b
 - [x] KB drafts manuais + pack Markdown `/admin/pack.md` para ChatGPT Pro
 - [x] MCP read-only `POST /mcp` (Bearer) — sem writes
@@ -56,7 +58,7 @@
 - [ ] DNS `A comms.bwb.pt` → VPS (se ainda não existir)
 - [ ] Registar apps Azure (pessoal) + Google Cloud e preencher secrets no VPS
 - [ ] Smoke: ligar conta Outlook.com + Gmail reais na admin
-- [ ] Encrypted off-host backup of `/var/lib/mail-mcp/` and `/var/lib/whatsapp-mcp/accounts/`
+- [ ] Encrypted off-host backup of `/var/lib/mail-mcp/` and `/var/lib/whatsapp-mcp/accounts/` (anexos Comms já no S3 Euronodes)
 - [ ] AUTH_TOKEN rotation schedule (90 days)
 - [ ] Assistente Claude config na admin (cola JSON → merge connectors)
 - [ ] Opcional: CalDAV na conta `bwb-pessoal`; `list_threads` / search multi-pasta (upstream v0.3+)

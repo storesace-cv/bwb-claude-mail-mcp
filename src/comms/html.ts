@@ -17,6 +17,7 @@ export function layout(
     error?: string;
     wrapClass?: string;
     extraHead?: string;
+    extraScripts?: string;
     waitJob?: { id: string; kind: string; title: string };
   }
 ): string {
@@ -77,6 +78,11 @@ export function layout(
     }
     .mono { font-family: var(--mono); font-size: .8rem; }
     .muted { color: var(--muted); }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .85rem; }
+    .card { display: block; background: var(--fill); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 1rem 1.1rem; color: inherit; text-decoration: none; }
+    .card:hover { text-decoration: none; background: var(--fill-hover); }
+    .card strong { display: block; font-size: 1.5rem; letter-spacing: -.04em; margin: .15rem 0; }
+    .card span { font-size: .8rem; color: var(--muted); }
     .check-list { max-height: 22rem; overflow: auto; border: 1px solid var(--border); border-radius: 10px; padding: .35rem .75rem .6rem; background: var(--fill); }
     .check-list fieldset { border: 0; margin: .65rem 0 0; padding: 0; }
     .check-list legend { font-size: .75rem; font-weight: 600; color: var(--muted); padding: 0; }
@@ -192,17 +198,20 @@ export function layout(
   </div>
   <script>${tableSortScript}</script>
   <script>${waitModalScript}</script>
+  ${opts?.extraScripts ?? ""}
 </body>
 </html>`;
 }
 
 export type Nav =
-  | "unanswered"
+  | "home"
+  | "mails"
   | "invoices"
   | "whatsapp"
   | "kb"
   | "rules"
-  | "jobs";
+  | "jobs"
+  | "settings";
 
 export function header(active: Nav): string {
   const item = (href: string, id: Nav, label: string) =>
@@ -210,12 +219,14 @@ export function header(active: Nav): string {
   return `<header class="app">
     <h1>BWB Comms</h1>
     <nav>
-      ${item("/admin", "unanswered", "Não respondidos")}
+      ${item("/admin", "home", "Início")}
+      ${item("/admin/mails", "mails", "Correio")}
       ${item("/admin/invoices", "invoices", "Facturas")}
       ${item("/admin/whatsapp", "whatsapp", "WhatsApp")}
       ${item("/admin/kb", "kb", "KB")}
       ${item("/admin/rules", "rules", "Regras")}
       ${item("/admin/jobs", "jobs", "Jobs")}
+      ${item("/admin/settings", "settings", "Definições")}
       <a href="/admin/pack.md">Pack ChatGPT</a>
       <a href="/admin/logout">Sair</a>
     </nav>

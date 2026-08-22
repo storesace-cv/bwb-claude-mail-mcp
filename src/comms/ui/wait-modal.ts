@@ -142,8 +142,9 @@ export const waitModalScript = `(function () {
           render(j.pct || 0, j.stepLabel || "A trabalhar…", j.step);
           lastLogs = fillPre("bwb-wait-log", j.logs, "Ainda sem linhas de actividade.");
           var stall = "";
+          var silent = 0;
           if (j.status === "running" && j.lastEventAt) {
-            var silent = Math.round((Date.now() - Number(j.lastEventAt)) / 1000);
+            silent = Math.round((Date.now() - Number(j.lastEventAt)) / 1000);
             var beat = $("bwb-wait-beat");
             if (beat) {
               beat.textContent = silent <= 2

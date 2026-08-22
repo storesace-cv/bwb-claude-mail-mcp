@@ -14,9 +14,10 @@
     "dev": "tsx --env-file=.env src/index.ts",
     "dev:comms": "tsx --env-file=.env.comms src/comms/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/comms/mail/threads.test.ts src/comms/mail/invoices.test.ts src/comms/rules/match.test.ts src/comms/whatsapp/store.test.ts src/comms/time/lisbon.test.ts src/comms/mail/classify-promo.test.ts src/comms/mail/folders.test.ts src/comms/whatsapp/keywords.test.ts src/comms/mail/helpdesk.test.ts"
+    "test": "tsx --test src/comms/mail/threads.test.ts src/comms/mail/invoices.test.ts src/comms/mail/invoice-whitelist.test.ts src/comms/rules/match.test.ts src/comms/whatsapp/store.test.ts src/comms/time/lisbon.test.ts src/comms/mail/classify-promo.test.ts src/comms/mail/folders.test.ts src/comms/whatsapp/keywords.test.ts src/comms/mail/helpdesk.test.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1116.0",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^11.10.0",
     "cookie-parser": "^1.4.7",

@@ -1,4 +1,5 @@
-import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { commsConfig } from "../config.js";
@@ -10,6 +11,8 @@ import { matchesKeywords } from "./keywords.js";
 import { upsertAllow } from "./store.js";
 import { listWaAccounts } from "./sync.js";
 import { jobError, jobLog, jobProgress, jobStep } from "../jobs/progress.js";
+import { mailAttachmentGateError } from "../settings.js";
+import { putAttachment, whatsappObjectKey } from "../storage.js";
 
 const CURSOR = "schedule:agt-kb";
 const GROUP_NAME = "AGT - IVA ANGOLA";
@@ -246,16 +249,17 @@ async function saveAgtJson(kb: AgtJson): Promise<void> {
 }
 
 async function copyGroupMedia(storeDir: string, jid: string, filename: string | null): Promise<number> {
+  if (mailAttachmentGateError()) return 0;
   const srcDir = path.join(storeDir, jid);
-  const destDir = path.join(commsConfig.filesDir, "agt", "anexos");
   try {
-    await mkdir(destDir, { recursive: true, mode: 0o700 });
     const names = filename ? [filename] : await readdir(srcDir);
     let n = 0;
     for (const name of names) {
       if (name.startsWith(".")) continue;
       try {
-        await copyFile(path.join(srcDir, name), path.join(destDir, name));
+        const buf = await readFile(path.join(srcDir, name));
+        const sha = createHash("sha256").update(buf).digest("hex");
+        await putAttachment(whatsappObjectKey("agt", sha, name), buf, "application/octet-stream");
         n += 1;
       } catch {
         // missing

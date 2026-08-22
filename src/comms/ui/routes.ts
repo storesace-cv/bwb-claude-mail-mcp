@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { createReadStream } from "node:fs";
 import { listMailAccounts } from "../accounts.js";
 import { forceChangePassword, getAdmin, verifyAdminCredentials } from "../admin-store.js";
 import { getDb, getCursor } from "../db.js";
@@ -12,6 +11,8 @@ import {
   type JobResult,
 } from "../jobs/run.js";
 import { getManualJob, startManualJob } from "../jobs/manual.js";
+import { deleteUnansweredThreads } from "../mail/delete-threads.js";
+import { reapplyInvoiceWhitelist } from "../mail/invoice-reapply.js";
 import { buildChatGptPack } from "../pack.js";
 import { loadRules, saveRules } from "../rules/apply.js";
 import {
@@ -34,6 +35,21 @@ import {
   type MailRule,
   type WaWatch,
 } from "../rules/store.js";
+import {
+  invoiceIssuers,
+  invoiceRecipients,
+  invoiceStage,
+  mailAttachmentGateError,
+  mailMaxAgeDays,
+  mailMaxAgeDaysClamp,
+  s3CredentialsOk,
+  s3TenantId,
+  setInvoiceLists,
+  setMailMaxAgeDays,
+  setS3TenantId,
+} from "../settings.js";
+import { streamAttachment } from "../storage.js";
+import { mailsSelectScript } from "./mails-select.js";
 import { checkCsrf, clearSessionCookie, requireAdminSession, setSessionCookie } from "../session.js";
 import { listWaChatsByAccount } from "../whatsapp/chats.js";
 import { listAllowlist, upsertAllow } from "../whatsapp/store.js";
@@ -79,6 +95,114 @@ adminRouter.get("/logout", (_req, res) => {
 
 adminRouter.use(requireAdminSession);
 
+adminRouter.get("/settings", (req, res) => {
+  const days = mailMaxAgeDays();
+  const tenant = s3TenantId();
+  const stage = invoiceStage();
+  const saved = String(req.query.saved ?? "") === "1";
+  const reapplied = String(req.query.reapplied ?? "");
+  const gate = mailAttachmentGateError();
+  const stageHint =
+    stage === "seed"
+      ? "Primeira importação: os anexos candidatos são guardados para poderes preencher as listas com palavras do PDF."
+      : stage === "review"
+        ? "Preenche destinatários e revê emissores. Novos anexos não são guardados. Depois disto, Re-aplicar apaga documentos que não casem no PDF."
+        : "Só se guarda o anexo se o texto do PDF casar com emissores ou destinatários.";
+  const flash = saved
+    ? "Definições guardadas."
+    : reapplied
+      ? `Re-aplicar: ${reapplied} removidos.`
+      : undefined;
+  res.type("html").send(
+    layout(
+      "Definições",
+      `${header("settings")}
+      ${gate ? `<div class="error">${esc(gate)}</div>` : ""}
+      <div class="panel">
+        <h2>Cliente / armazenamento</h2>
+        <p class="muted">Anexos em <span class="mono">s3://bwb-backups/comms/&lt;cliente&gt;/invoices/…</span> e <span class="mono">…/whatsapp/…</span>. As chaves S3 ficam no servidor, não aqui.</p>
+        <p class="muted">Identificador actual: <span class="mono">${esc(tenant || "(vazio)")}</span>. Mudar depois de haver ficheiros no S3 não move objectos antigos.</p>
+        <form method="post" action="/admin/settings" class="stack">
+          <input type="hidden" name="section" value="tenant">
+          <label>Identificador do cliente
+            <input name="s3_tenant_id" required pattern="[a-z0-9][a-z0-9-]*" value="${esc(tenant)}" placeholder="jorgepeixinho">
+          </label>
+          <div class="actions"><button type="submit">Guardar identificador</button></div>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Correio</h2>
+        <p class="muted">O Comms não lê nem descarrega anexos de mensagens mais antigas do que este prazo.</p>
+        <form method="post" action="/admin/settings" class="stack">
+          <input type="hidden" name="section" value="mail">
+          <label>Máximo de antiguidade (dias)
+            <input name="mail_max_age_days" type="number" min="1" max="3650" step="1" value="${days}" required>
+          </label>
+          <div class="actions"><button type="submit">Guardar</button></div>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Documentos de venda</h2>
+        <p class="muted">Palavras-chave no <strong>texto do anexo</strong> (não no From/To do email). Uma linha por regra; <span class="mono">;</span> = OU; <span class="mono">&amp;</span> = E. Ex.: <span class="mono">Jorge; Peixinho; Jorge&amp;Peixinho</span>. Maiúsculas e acentos não importam.</p>
+        <p class="muted">Fase: <strong>${esc(stage)}</strong>. ${esc(stageHint)}</p>
+        <form method="post" action="/admin/settings" class="stack">
+          <input type="hidden" name="section" value="invoices">
+          <label>Lista branca de emissores
+            <textarea name="invoice_issuers" rows="6">${esc(invoiceIssuers())}</textarea>
+          </label>
+          <label>Lista branca de destinatários
+            <textarea name="invoice_recipients" rows="6">${esc(invoiceRecipients())}</textarea>
+          </label>
+          <div class="actions"><button type="submit">Guardar listas</button></div>
+        </form>
+        <form method="post" action="/admin/settings/reapply" class="actions">
+          <button type="submit" class="secondary">Re-aplicar</button>
+        </form>
+      </div>`,
+      flash ? { flash } : undefined
+    )
+  );
+});
+
+adminRouter.post("/settings", (req, res) => {
+  if (!checkCsrf(req)) {
+    res.status(403).send("CSRF");
+    return;
+  }
+  const section = String(req.body?.section ?? "mail");
+  try {
+    if (section === "tenant") setS3TenantId(String(req.body?.s3_tenant_id ?? ""));
+    if (section === "mail") setMailMaxAgeDays(mailMaxAgeDaysClamp(Number(req.body?.mail_max_age_days)));
+    if (section === "invoices") {
+      setInvoiceLists(String(req.body?.invoice_issuers ?? ""), String(req.body?.invoice_recipients ?? ""));
+    }
+    res.redirect("/admin/settings?saved=1");
+  } catch (err) {
+    res.type("html").send(
+      layout("Definições", header("settings"), {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    );
+  }
+});
+
+adminRouter.post("/settings/reapply", async (req, res) => {
+  if (!checkCsrf(req)) {
+    res.status(403).send("CSRF");
+    return;
+  }
+  try {
+    const r = await reapplyInvoiceWhitelist();
+    res.redirect(`/admin/settings?reapplied=${r.removed}`);
+  } catch (err) {
+    res.type("html").send(
+      layout("Definições", header("settings"), {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    );
+  }
+});
+
 adminRouter.get("/change-password", (_req, res) => {
   res.type("html").send(
     layout(
@@ -113,6 +237,28 @@ adminRouter.post("/change-password", async (req, res) => {
 });
 
 adminRouter.get("/", (_req, res) => {
+  const unanswered = (
+    getDb().prepare("SELECT COUNT(*) AS n FROM mail_threads WHERE unanswered = 1").get() as { n: number }
+  ).n;
+  const invoices = (getDb().prepare("SELECT COUNT(*) AS n FROM invoices").get() as { n: number }).n;
+  const gate = mailAttachmentGateError();
+  const tenant = s3TenantId();
+  const s3ok = s3CredentialsOk();
+  const body = `${header("home")}
+    <div class="panel">
+      <h2>Início</h2>
+      <div class="cards">
+        <a class="card" href="/admin/mails"><span>Correio não respondido</span><strong>${unanswered}</strong></a>
+        <a class="card" href="/admin/invoices"><span>Facturas</span><strong>${invoices}</strong></a>
+        <a class="card" href="/admin/jobs"><span>Jobs</span><strong>abrir</strong></a>
+        <a class="card" href="/admin/settings"><span>Cliente S3</span><strong class="mono" style="font-size:1rem">${esc(tenant || "—")}</strong></a>
+      </div>
+      <p class="muted" style="margin-top:1rem">S3: ${s3ok ? "credenciais presentes" : "credenciais em falta"}. ${gate ? esc(gate) : "Anexos de correio podem sincronizar."}</p>
+    </div>`;
+  res.type("html").send(layout("Início", body));
+});
+
+adminRouter.get("/mails", (req, res) => {
   const rows = getDb()
     .prepare(
       `SELECT t.account_id, t.thread_key, t.subject, t.last_inbound_at, t.last_outbound_at,
@@ -130,26 +276,79 @@ adminRouter.get("/", (_req, res) => {
     last_outbound_at: number | null;
     from_header: string;
   }>;
-  const body = `${header("unanswered")}
+  const err = String(req.query.err ?? "");
+  const flash = String(req.query.ok ?? "");
+  const body = `${header("mails")}
     <div class="panel">
-      <h2>Não respondidos (${rows.length})</h2>
-      <table>
-        <thead><tr><th>Conta</th><th>De</th><th>Assunto</th><th>Último inbound</th></tr></thead>
-        <tbody>
-          ${rows
-            .map(
-              (r) => `<tr>
+      <h2>Correio não respondido (${rows.length})</h2>
+      <form id="mails-bulk" method="post" action="/admin/mails/delete" onsubmit="return confirm('Apagar no servidor IMAP as threads seleccionadas?');">
+        <div class="actions">
+          <button type="submit">Apagar seleccionados no correio</button>
+        </div>
+        <table>
+          <thead><tr>
+            <th><input type="checkbox" id="mails-all" title="Seleccionar tudo"></th>
+            <th>Conta</th><th>De</th><th>Assunto</th><th>Último inbound</th>
+            <th></th><th></th>
+          </tr></thead>
+          <tbody>
+            ${rows
+              .map((r) => {
+                const token = `${encodeURIComponent(r.account_id)}|${encodeURIComponent(r.thread_key)}`;
+                const ruleHref = `/admin/rules?account=${encodeURIComponent(r.account_id)}&from=${encodeURIComponent(r.from_header ?? "")}&subject=${encodeURIComponent(r.subject ?? "")}`;
+                return `<tr>
+                <td><input type="checkbox" name="sel" value="${esc(token)}"></td>
                 <td class="mono">${esc(r.account_id)}</td>
                 <td>${esc(r.from_header ?? "")}</td>
                 <td>${esc(r.subject)}</td>
                 <td class="muted">${r.last_inbound_at ? esc(new Date(r.last_inbound_at).toISOString()) : ""}</td>
-              </tr>`
-            )
-            .join("")}
-        </tbody>
-      </table>
+                <td><button class="secondary" type="submit" name="sel" value="${esc(token)}" formaction="/admin/mails/delete" formmethod="post">Apagar</button></td>
+                <td><a class="btn secondary" href="${esc(ruleHref)}">Criar regra</a></td>
+              </tr>`;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </form>
     </div>`;
-  res.type("html").send(layout("Não respondidos", body));
+  res.type("html").send(
+    layout("Correio", body, {
+      error: err || undefined,
+      flash: flash || undefined,
+      extraScripts: `<script>${mailsSelectScript}</script>`,
+    })
+  );
+});
+
+adminRouter.post("/mails/delete", async (req, res) => {
+  if (!checkCsrf(req)) {
+    res.status(403).send("CSRF");
+    return;
+  }
+  const raw = req.body?.sel;
+  const list = (Array.isArray(raw) ? raw : raw ? [raw] : []).map(String).filter(Boolean);
+  const targets = list
+    .map((t) => {
+      const i = t.indexOf("|");
+      if (i < 0) return null;
+      return {
+        accountId: decodeURIComponent(t.slice(0, i)),
+        threadKey: decodeURIComponent(t.slice(i + 1)),
+      };
+    })
+    .filter((x): x is { accountId: string; threadKey: string } => Boolean(x));
+  if (!targets.length) {
+    res.redirect("/admin/mails?err=" + encodeURIComponent("Nada seleccionado."));
+    return;
+  }
+  const result = await deleteUnansweredThreads(targets);
+  if (result.failed.length) {
+    res.redirect(
+      "/admin/mails?err=" + encodeURIComponent(`${result.ok} apagadas. Falhas: ${result.failed.join("; ")}`)
+    );
+    return;
+  }
+  res.redirect("/admin/mails?ok=" + encodeURIComponent(`${result.ok} thread(s) apagadas no IMAP.`));
 });
 
 adminRouter.get("/invoices", (_req, res) => {
@@ -186,7 +385,7 @@ adminRouter.get("/invoices", (_req, res) => {
   res.type("html").send(layout("Facturas", body));
 });
 
-adminRouter.get("/invoices/:id/file", (req, res) => {
+adminRouter.get("/invoices/:id/file", async (req, res) => {
   const id = Number(req.params.id);
   const row = getDb()
     .prepare("SELECT path, filename, mime FROM invoices WHERE id = ?")
@@ -195,9 +394,14 @@ adminRouter.get("/invoices/:id/file", (req, res) => {
     res.status(404).send("not found");
     return;
   }
-  res.setHeader("Content-Type", row.mime || "application/octet-stream");
+  const att = await streamAttachment(row.path);
+  if (!att) {
+    res.status(404).send("not found");
+    return;
+  }
+  res.setHeader("Content-Type", row.mime || att.contentType || "application/octet-stream");
   res.setHeader("Content-Disposition", `inline; filename="${row.filename.replace(/"/g, "")}"`);
-  createReadStream(row.path).pipe(res);
+  att.stream.pipe(res);
 });
 
 adminRouter.get("/whatsapp", async (req, res) => {
@@ -517,7 +721,7 @@ adminRouter.post("/kb/:id", (req, res) => {
   res.redirect("/admin/kb");
 });
 
-adminRouter.get("/rules", async (_req, res) => {
+adminRouter.get("/rules", async (req, res) => {
   const accounts = await listMailAccounts();
   const rules = listMailRules();
   const schedules = listSchedules();
@@ -557,7 +761,16 @@ adminRouter.get("/rules", async (_req, res) => {
     <div class="panel">
       <h2>Nova regra de mail</h2>
       <p class="muted">Conta, remetente recente e pasta IMAP vêm das caixas já sincronizadas.</p>
-      ${ruleForm({ accounts, folders, senders })}
+      ${ruleForm({
+        accounts,
+        folders,
+        senders,
+        prefillFrom: String(req.query.from ?? ""),
+        prefillAccount: String(req.query.account ?? ""),
+        prefillName: String(req.query.subject ?? "")
+          ? `De: ${String(req.query.subject ?? "").slice(0, 80)}`
+          : "",
+      })}
     </div>
     <div class="panel">
       <h2>Regras activas</h2>
@@ -812,9 +1025,11 @@ const AGT_HELP =
 adminRouter.get("/jobs", async (_req, res) => {
   const admin = await getAdmin();
   const schedules = listSchedules();
+  const gate = mailAttachmentGateError();
   const body = `${header("jobs")}
     <div class="panel">
       <p class="muted">Sessão: ${esc(admin.email)}. Os jobs também correm sozinhos.</p>
+      ${gate ? `<p class="error">${esc(gate)}</p>` : ""}
       <table>
         <thead><tr><th>Agendamento</th><th>Hora</th><th>Última corrida</th><th>Estado</th></tr></thead>
         <tbody>
@@ -860,6 +1075,11 @@ adminRouter.get("/jobs", async (_req, res) => {
 adminRouter.post("/jobs/mail", (req, res) => {
   if (!checkCsrf(req)) {
     res.status(403).send("CSRF");
+    return;
+  }
+  const gate = mailAttachmentGateError();
+  if (gate) {
+    res.type("html").send(layout("Jobs", `${header("jobs")}<div class="panel"></div>`, { error: gate }));
     return;
   }
   const id = startManualJob("Sincronizar correio", "mail", runMailPipeline);
@@ -1214,13 +1434,19 @@ function ruleForm(opts: {
   senders: string[];
   rule?: MailRule;
   action?: string;
+  prefillFrom?: string;
+  prefillAccount?: string;
+  prefillName?: string;
 }): string {
   const r = opts.rule;
   const action = opts.action ?? "/admin/rules";
   const kinds = ["keep", "newsletters", "marketing", "helpdesk", "custom"];
   const checked = (on: boolean) => (on ? "checked" : "");
+  const nameVal = r?.name ?? opts.prefillName ?? "";
+  const fromVal = r?.matchFrom ?? opts.prefillFrom ?? "";
+  const accountVal = r?.accountId ?? opts.prefillAccount ?? "*";
   return `<form method="post" action="${esc(action)}" class="stack">
-    <label>Nome <input name="name" required value="${esc(r?.name ?? "")}"></label>
+    <label>Nome <input name="name" required value="${esc(nameVal)}"></label>
     <div class="row">
       <label>Tipo
         <select name="kind">
@@ -1234,11 +1460,11 @@ function ruleForm(opts: {
       </label>
       <label>Conta
         <select name="account_id">
-          <option value="*" ${!r || r.accountId === "*" ? "selected" : ""}>Todas</option>
+          <option value="*" ${accountVal === "*" ? "selected" : ""}>Todas</option>
           ${opts.accounts
             .map(
               (a) =>
-                `<option value="${esc(a.id)}" ${r?.accountId === a.id ? "selected" : ""}>${esc(a.label)}</option>`
+                `<option value="${esc(a.id)}" ${accountVal === a.id ? "selected" : ""}>${esc(a.label)}</option>`
             )
             .join("")}
         </select>
@@ -1246,7 +1472,7 @@ function ruleForm(opts: {
     </div>
     <div class="row">
       <label>Remetente (lista recente)
-        <input name="match_from" list="senders" value="${esc(r?.matchFrom ?? "")}" placeholder="email ou parte do from">
+        <input name="match_from" list="senders" value="${esc(fromVal)}" placeholder="email ou parte do from">
         <datalist id="senders">
           ${opts.senders.map((s) => `<option value="${esc(s)}"></option>`).join("")}
         </datalist>

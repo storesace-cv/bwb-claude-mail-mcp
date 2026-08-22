@@ -45,4 +45,10 @@ export const commsConfig = {
   get rulesFile() {
     return process.env.COMMS_RULES_FILE ?? path.join(this.stateDir, "folder-rules.json");
   },
+  s3: {
+    endpoint: process.env.EURONODES_S3_ENDPOINT ?? "https://eu-west-1.euronodes.com",
+    bucket: process.env.EURONODES_S3_BUCKET ?? "bwb-backups",
+    accessKey: process.env.EURONODES_S3_ACCESS_KEY ?? "",
+    secretKey: process.env.EURONODES_S3_SECRET_KEY ?? "",
+  },
 };
