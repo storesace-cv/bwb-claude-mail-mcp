@@ -14,7 +14,6 @@ import {
   getMailRule,
   getWaWatch,
   insertMailRule,
-  insertWaWatch,
   listCachedFolders,
   listMailRules,
   listSchedules,
@@ -23,7 +22,7 @@ import {
   setWaWatchEnabled,
   updateMailRule,
   updateSchedule,
-  updateWaWatch,
+  upsertWaWatch,
   type MailRule,
   type WaWatch,
 } from "../rules/store.js";
@@ -214,7 +213,7 @@ adminRouter.get("/whatsapp", async (req, res) => {
   const body = `${header("whatsapp")}
     <div class="panel">
       <h2>Nova vigia</h2>
-      <p class="muted">Podes vigiar vários grupos e contactos, em qualquer conta. Cada linha é independente e editável.</p>
+      <p class="muted">Selecciona um ou vários grupos/contactos. Palavras-chave e KB aplicam-se a todos da mesma forma.</p>
       ${watchForm({ accounts, chatsByAccount })}
     </div>
     <div class="panel">
@@ -298,6 +297,7 @@ adminRouter.get("/whatsapp/:id", async (req, res) => {
   const body = `${header("whatsapp")}
     <div class="panel">
       <h2>Editar vigia</h2>
+      <p class="muted">Podes acrescentar conversas: ficam com as mesmas palavras-chave e opções.</p>
       ${watchForm({ accounts, chatsByAccount, watch, action: `/admin/whatsapp/${watch.id}` })}
       <p><a href="/admin/whatsapp">voltar</a></p>
     </div>`;
@@ -310,8 +310,8 @@ adminRouter.post("/whatsapp", async (req, res) => {
     return;
   }
   try {
-    const parsed = await parseWaWatchBody(req.body);
-    insertWaWatch(parsed);
+    const parsed = await parseWaWatchBodies(req.body);
+    saveWaWatches(parsed);
     syncAllowFromWatches();
     res.redirect("/admin/whatsapp");
   } catch (err) {
@@ -325,13 +325,16 @@ adminRouter.post("/whatsapp/:id", async (req, res) => {
     return;
   }
   const id = Number(req.params.id);
-  if (!getWaWatch(id)) {
+  const current = getWaWatch(id);
+  if (!current) {
     res.status(404).send("not found");
     return;
   }
   try {
-    const parsed = await parseWaWatchBody(req.body);
-    updateWaWatch({ id, ...parsed });
+    const parsed = await parseWaWatchBodies(req.body);
+    saveWaWatches(parsed);
+    const still = parsed.some((p) => p.accountId === current.accountId && p.chatJid === current.chatJid);
+    if (!still) deleteWaWatch(id);
     syncAllowFromWatches();
     res.redirect("/admin/whatsapp");
   } catch (err) {
@@ -904,19 +907,36 @@ function decodeWatchChat(value: string): { accountId: string; chatJid: string } 
   return { accountId: value.slice(0, i), chatJid: value.slice(i + 2) };
 }
 
-async function parseWaWatchBody(body: Record<string, unknown>): Promise<Omit<WaWatch, "id">> {
-  const { accountId, chatJid } = decodeWatchChat(String(body.conversation ?? ""));
-  const chats = (await listWaChatsByAccount()).get(accountId) ?? [];
-  const chat = chats.find((c) => c.jid === chatJid);
+function asStringList(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map(String).map((s) => s.trim()).filter(Boolean);
+  if (typeof v === "string" && v.trim()) return [v.trim()];
+  return [];
+}
+
+async function parseWaWatchBodies(body: Record<string, unknown>): Promise<Array<Omit<WaWatch, "id">>> {
+  const values = asStringList(body.conversation);
+  if (!values.length) throw new Error("Escolhe pelo menos uma conversa");
+  const chatsByAccount = await listWaChatsByAccount();
   const flag = (k: string) => String(body[k] ?? "") === "on" || String(body[k] ?? "") === "1";
-  return {
-    accountId,
-    chatJid,
-    label: chat?.name || chatJid,
-    keywords: String(body.keywords ?? "").trim(),
-    kbEnabled: flag("kb_enabled"),
-    enabled: flag("enabled"),
-  };
+  const keywords = String(body.keywords ?? "").trim();
+  const kbEnabled = flag("kb_enabled");
+  const enabled = flag("enabled");
+  return values.map((value) => {
+    const { accountId, chatJid } = decodeWatchChat(value);
+    const chat = chatsByAccount.get(accountId)?.find((c) => c.jid === chatJid);
+    return {
+      accountId,
+      chatJid,
+      label: chat?.name || chatJid,
+      keywords,
+      kbEnabled,
+      enabled,
+    };
+  });
+}
+
+function saveWaWatches(rows: Array<Omit<WaWatch, "id">>): void {
+  for (const row of rows) upsertWaWatch(row);
 }
 
 function syncAllowFromWatches(): void {
@@ -940,34 +960,36 @@ function watchForm(opts: {
 }): string {
   const w = opts.watch;
   const action = opts.action ?? "/admin/whatsapp";
-  const selected = w ? encodeWatchChat(w.accountId, w.chatJid) : "";
+  const selected = new Set(w ? [encodeWatchChat(w.accountId, w.chatJid)] : []);
   const groups = opts.accounts
-    .map((a) => {
+    .map((a, accIdx) => {
       const chats = [...(opts.chatsByAccount.get(a.id) ?? [])];
       if (w && w.accountId === a.id && !chats.some((c) => c.jid === w.chatJid)) {
         chats.unshift({ jid: w.chatJid, name: w.label || w.chatJid });
       }
+      const fid = `wa-acc-${accIdx}`;
       if (!chats.length) {
-        return `<optgroup label="${esc(a.label)} (sem conversas no store)"></optgroup>`;
+        return `<fieldset><legend>${esc(a.label)} — sem conversas no store</legend></fieldset>`;
       }
-      return `<optgroup label="${esc(a.label)}">
+      return `<fieldset id="${fid}">
+        <legend>${esc(a.label)}</legend>
+        <button type="button" class="secondary mini" onclick="document.querySelectorAll('#${fid} input[type=checkbox]').forEach(function(c){c.checked=true})">Seleccionar todos</button>
         ${chats
           .map((c) => {
             const val = encodeWatchChat(a.id, c.jid);
             const kind = waChatKind(c.jid);
-            return `<option value="${esc(val)}" ${val === selected ? "selected" : ""}>${esc(kind)} · ${esc(c.name)}</option>`;
+            const on = selected.has(val) ? "checked" : "";
+            return `<label class="chk"><input type="checkbox" name="conversation" value="${esc(val)}" ${on}> ${esc(kind)} · ${esc(c.name)}</label>`;
           })
           .join("")}
-      </optgroup>`;
+      </fieldset>`;
     })
     .join("");
   return `<form method="post" action="${esc(action)}" class="stack">
-    <label>Conversa
-      <select name="conversation" required>
-        <option value="">Escolher grupo ou contacto…</option>
-        ${groups}
-      </select>
+    <label>Conversas
+      <span class="muted" style="font-weight:400">Multi-selecção: a mesma configuração aplica-se a todos os escolhidos.</span>
     </label>
+    <div class="check-list">${groups}</div>
     <label>Palavras-chave (vírgula)
       <input name="keywords" value="${esc(w?.keywords ?? "")}" placeholder="IVA, SAFT-AO, certificação">
     </label>

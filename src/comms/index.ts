@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   const app = express();
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
-  app.use(express.urlencoded({ extended: false }));
+  app.use(express.urlencoded({ extended: true }));
   app.use(express.json({ limit: "2mb" }));
   app.use(cookieParser());
 

@@ -65,6 +65,11 @@ export function layout(title: string, body: string, opts?: { flash?: string; err
     }
     .mono { font-family: var(--mono); font-size: .8rem; }
     .muted { color: var(--muted); }
+    .check-list { max-height: 22rem; overflow: auto; border: 1px solid var(--border); border-radius: 10px; padding: .35rem .75rem .6rem; background: var(--fill); }
+    .check-list fieldset { border: 0; margin: .65rem 0 0; padding: 0; }
+    .check-list legend { font-size: .75rem; font-weight: 600; color: var(--muted); padding: 0; }
+    .check-list .chk { flex-direction: row; align-items: center; gap: .5rem; font-size: .875rem; font-weight: 400; color: var(--text); margin: .2rem 0; }
+    .check-list .mini { margin: .25rem 0 .4rem; font-size: .75rem; padding: .3rem .7rem; }
     .badge { display: inline-block; font-size: .6875rem; padding: .15rem .5rem; border-radius: 980px; background: var(--fill-hover); }
   </style>
 </head>
