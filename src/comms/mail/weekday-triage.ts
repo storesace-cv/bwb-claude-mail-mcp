@@ -1,19 +1,22 @@
 import { listMailAccounts } from "../accounts.js";
 import { getCursor, setCursor } from "../db.js";
+import { getSchedule, listMailRules } from "../rules/store.js";
 import { lisbonParts, shouldFireDaily } from "../time/lisbon.js";
 import { fileHelpdeskMail } from "./helpdesk-file.js";
 import { listEnvelopes, loadLayout, openImap, searchUids } from "./imap.js";
 import { fileAndPurgePromo } from "./newsletter-purge.js";
 import { sendCommsMail } from "./send.js";
 
-const CURSOR = "schedule:weekday-inbox-triage";
+const CURSOR = "schedule:triage";
 
 export async function runWeekdayInboxTriageIfDue(): Promise<{ ran: boolean; detail: string }> {
+  const schedule = getSchedule("triage");
+  if (!schedule?.enabled) return { ran: false, detail: "agendamento desligado" };
   if (
     !shouldFireDaily({
-      lastDateKey: getCursor(CURSOR),
-      hour: 7,
-      weekdaysOnly: true,
+      lastDateKey: getCursor(CURSOR) ?? getCursor("schedule:weekday-inbox-triage"),
+      hour: schedule.hour,
+      weekdaysOnly: schedule.weekdaysOnly,
     })
   ) {
     return { ran: false, detail: "não devido" };
@@ -27,7 +30,7 @@ export async function runWeekdayInboxTriage(): Promise<string> {
   const accounts = await listMailAccounts();
   const sections: string[] = [
     `Triage INBOX — ${lisbonParts().dateKey} (Europe/Lisbon)`,
-    "Rascunhos automáticos do Claude NÃO são criados aqui (sem LLM). Não lidos ficam no relatório.",
+    "Sem rascunhos automáticos. Não lidos ficam no relatório.",
     "",
   ];
   for (const account of accounts) {
@@ -46,24 +49,31 @@ export async function runWeekdayInboxTriage(): Promise<string> {
             sections.push(`- ${m.fromHeader} — ${m.subject}`);
           }
         }
-        const hd = await fileHelpdeskMail(client, account);
-        sections.push("Helpdesk organizado:");
-        const entries = Object.entries(hd.byFolder);
-        if (!entries.length) sections.push("- nada a arquivar");
-        for (const [folder, n] of entries) {
-          sections.push(`- ${folder}: ${n} mensagens`);
+        const helpdeskOn = listMailRules(true).some((r) => r.kind === "helpdesk");
+        if (helpdeskOn) {
+          const hd = await fileHelpdeskMail(client, account);
+          sections.push("Helpdesk organizado:");
+          const entries = Object.entries(hd.byFolder);
+          if (!entries.length) sections.push("- nada a arquivar");
+          for (const [folder, n] of entries) {
+            sections.push(`- ${folder}: ${n} mensagens`);
+          }
+          if (hd.unclassified) {
+            sections.push(`- _sem-cliente: ${hd.unclassified} (rever)`);
+          }
         }
-        if (hd.unclassified) {
-          sections.push(`- _sem-cliente: ${hd.unclassified} (rever)`);
-        }
-        const promo = await fileAndPurgePromo(client);
+        const promo = await fileAndPurgePromo(client, account.id);
         sections.push("Newsletters & Marketing:");
+        const filed = Object.entries(promo.filed);
         sections.push(
-          `- filed newsletters ${promo.filedNewsletters}, marketing ${promo.filedMarketing}`
+          filed.length
+            ? filed.map(([k, n]) => `- filed ${k}: ${n}`).join("\n")
+            : "- nada a arquivar"
         );
-        sections.push(
-          `- purged (>8d) newsletters ${promo.purgedNewsletters}, marketing ${promo.purgedMarketing}`
-        );
+        const purged = Object.entries(promo.purged);
+        for (const [k, n] of purged) {
+          sections.push(`- purge ${k}: ${n}`);
+        }
       } finally {
         await client.logout().catch(() => undefined);
       }

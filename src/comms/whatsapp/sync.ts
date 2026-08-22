@@ -3,19 +3,28 @@ import path from "node:path";
 import { commsConfig } from "../config.js";
 import { ingestWhatsappDb } from "./store.js";
 
-interface WaAccount {
+export interface WaAccount {
   id: string;
+  label: string;
   storeDir: string;
 }
+
+const DEFAULT_WA_LABELS: Record<string, string> = {
+  a: "Pessoal",
+  b: "Angola",
+};
 
 export async function listWaAccounts(): Promise<WaAccount[]> {
   try {
     const raw = await fs.readFile(commsConfig.waAccountsFile, "utf8");
-    const parsed = JSON.parse(raw) as { accounts?: WaAccount[] };
+    const parsed = JSON.parse(raw) as {
+      accounts?: Array<{ id: string; storeDir: string; label?: string; name?: string }>;
+    };
     if (Array.isArray(parsed.accounts) && parsed.accounts.length) {
       return parsed.accounts.map((a) => ({
         id: a.id,
         storeDir: a.storeDir,
+        label: a.label || a.name || DEFAULT_WA_LABELS[a.id] || a.id,
       }));
     }
   } catch {
@@ -24,10 +33,12 @@ export async function listWaAccounts(): Promise<WaAccount[]> {
   return [
     {
       id: "a",
+      label: DEFAULT_WA_LABELS.a,
       storeDir: path.join(commsConfig.waStateDir, "accounts", "a", "store"),
     },
     {
       id: "b",
+      label: DEFAULT_WA_LABELS.b,
       storeDir: path.join(commsConfig.waStateDir, "accounts", "b", "store"),
     },
   ];

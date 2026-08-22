@@ -1,5 +1,5 @@
 import type { ImapFlow } from "imapflow";
-import { classifyPromo } from "./classify-promo.js";
+import { classifyPromo, purgeDaysByFolder } from "./classify-promo.js";
 import { folderPath } from "./folders.js";
 import {
   deleteUids,
@@ -9,46 +9,67 @@ import {
   moveUids,
   searchUids,
 } from "./imap.js";
+import { listMailRules } from "../rules/store.js";
 
 export interface NewsletterResult {
+  filed: Record<string, number>;
+  purged: Record<string, number>;
+  leftInInbox: number;
   filedNewsletters: number;
   filedMarketing: number;
   purgedNewsletters: number;
   purgedMarketing: number;
-  leftInInbox: number;
 }
 
-export async function fileAndPurgePromo(client: ImapFlow): Promise<NewsletterResult> {
+export async function fileAndPurgePromo(
+  client: ImapFlow,
+  accountId?: string
+): Promise<NewsletterResult> {
   const layout = await loadLayout(client);
-  const newsPath = folderPath(layout, "newsletters");
-  const mktPath = folderPath(layout, "marketing");
-  await ensureFolder(client, newsPath);
-  await ensureFolder(client, mktPath);
-
+  const rules = listMailRules(true).filter(
+    (r) => r.accountId === "*" || !accountId || r.accountId === accountId
+  );
   const inboxUids = await searchUids(client, "INBOX", {});
   const msgs = await listEnvelopes(client, "INBOX", inboxUids.slice(0, 400));
-  const toNews: number[] = [];
-  const toMkt: number[] = [];
+  const buckets = new Map<string, number[]>();
   let leftInInbox = 0;
   for (const msg of msgs) {
-    const bucket = classifyPromo({ fromHeader: msg.fromHeader, subject: msg.subject });
-    if (bucket === "newsletters") toNews.push(msg.uid);
-    else if (bucket === "marketing") toMkt.push(msg.uid);
-    else leftInInbox += 1;
+    const dest = classifyPromo({
+      fromHeader: msg.fromHeader,
+      subject: msg.subject,
+      accountId,
+    });
+    if (!dest) {
+      leftInInbox += 1;
+      continue;
+    }
+    const list = buckets.get(dest) ?? [];
+    list.push(msg.uid);
+    buckets.set(dest, list);
   }
-  const filedNewsletters = await moveUids(client, "INBOX", toNews, newsPath);
-  const filedMarketing = await moveUids(client, "INBOX", toMkt, mktPath);
 
-  const cutoff = new Date(Date.now() - 8 * 24 * 3600 * 1000);
-  const purgedNewsletters = await purgeOlder(client, newsPath, cutoff);
-  const purgedMarketing = await purgeOlder(client, mktPath, cutoff);
+  const filed: Record<string, number> = {};
+  for (const [dest, uids] of buckets) {
+    const destPath = dest.includes(".") || dest.includes("/") ? dest : folderPath(layout, dest);
+    await ensureFolder(client, destPath);
+    filed[dest] = await moveUids(client, "INBOX", uids, destPath);
+  }
+
+  const purged: Record<string, number> = {};
+  for (const [dest, days] of purgeDaysByFolder(rules)) {
+    const destPath = dest.includes(".") || dest.includes("/") ? dest : folderPath(layout, dest);
+    const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000);
+    purged[dest] = await purgeOlder(client, destPath, cutoff);
+  }
 
   return {
-    filedNewsletters,
-    filedMarketing,
-    purgedNewsletters,
-    purgedMarketing,
+    filed,
+    purged,
     leftInInbox,
+    filedNewsletters: filed.newsletters ?? 0,
+    filedMarketing: filed.marketing ?? 0,
+    purgedNewsletters: purged.newsletters ?? 0,
+    purgedMarketing: purged.marketing ?? 0,
   };
 }
 

@@ -18,9 +18,13 @@ export async function openImap(account: MailAccount): Promise<ImapFlow> {
   return client;
 }
 
-export async function loadLayout(client: ImapFlow): Promise<FolderLayout> {
+export async function listMailboxPaths(client: ImapFlow): Promise<string[]> {
   const boxes = await client.list();
-  return inferFolderLayout(boxes.map((b) => b.path));
+  return boxes.map((b) => b.path).filter(Boolean).sort();
+}
+
+export async function loadLayout(client: ImapFlow): Promise<FolderLayout> {
+  return inferFolderLayout(await listMailboxPaths(client));
 }
 
 export async function ensureFolder(client: ImapFlow, path: string): Promise<void> {

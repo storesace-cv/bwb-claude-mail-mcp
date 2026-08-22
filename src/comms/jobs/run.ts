@@ -65,10 +65,10 @@ export async function runScheduledTasks(): Promise<JobResult[]> {
   const out: JobResult[] = [];
   try {
     const t = await runWeekdayInboxTriageIfDue();
-    out.push({ name: "weekday-inbox-triage", ok: true, detail: t.ran ? t.detail : t.detail });
+    out.push({ name: "organizar-inbox", ok: true, detail: t.ran ? t.detail : t.detail });
   } catch (err) {
     out.push({
-      name: "weekday-inbox-triage",
+      name: "organizar-inbox",
       ok: false,
       detail: err instanceof Error ? err.message : String(err),
     });
@@ -89,10 +89,10 @@ export async function runScheduledTasks(): Promise<JobResult[]> {
 export async function runWeekdayNow(): Promise<JobResult> {
   try {
     const text = await runWeekdayInboxTriage();
-    return { name: "weekday-inbox-triage", ok: true, detail: text.slice(0, 500) };
+    return { name: "organizar-inbox", ok: true, detail: text.slice(0, 500) };
   } catch (err) {
     return {
-      name: "weekday-inbox-triage",
+      name: "organizar-inbox",
       ok: false,
       detail: err instanceof Error ? err.message : String(err),
     };

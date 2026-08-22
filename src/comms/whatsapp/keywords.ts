@@ -1,3 +1,17 @@
+function normalize(text: string): string {
+  return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
+export function matchesKeywords(text: string, keywordsCsv: string): boolean {
+  const terms = keywordsCsv
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (!terms.length) return matchesAgtKeywords(text);
+  const n = normalize(text);
+  return terms.some((term) => n.includes(normalize(term))) || matchesAgtKeywords(text);
+}
+
 const PATTERNS: RegExp[] = [
   /fatura[cç][aã]o\s+eletr[oó]nica/i,
   /factura[cç][aã]o\s+electr[oó]nica/i,

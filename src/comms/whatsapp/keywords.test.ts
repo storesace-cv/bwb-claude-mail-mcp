@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { matchesAgtKeywords } from "./keywords.js";
+import { matchesAgtKeywords, matchesKeywords } from "./keywords.js";
 
 describe("matchesAgtKeywords", () => {
   it("hits SAFT-AO and IVA", () => {
@@ -12,7 +12,8 @@ describe("matchesAgtKeywords", () => {
     assert.equal(matchesAgtKeywords("Faturação Eletrónica AGT"), true);
   });
 
-  it("ignores unrelated chat", () => {
-    assert.equal(matchesAgtKeywords("Bom dia, alguém vai almoçar?"), false);
+  it("matches configured keyword list", () => {
+    assert.equal(matchesKeywords("novo SAFT-AO publicado", "faturação eletrónica, SAFT-AO"), true);
+    assert.equal(matchesKeywords("Bom dia", "IVA, SAFT-AO"), false);
   });
 });

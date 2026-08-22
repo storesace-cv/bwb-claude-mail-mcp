@@ -4,8 +4,9 @@ import Database from "better-sqlite3";
 import { commsConfig } from "../config.js";
 import { getDb, getCursor, setCursor } from "../db.js";
 import { sendCommsMail } from "../mail/send.js";
+import { getSchedule, listWaWatches } from "../rules/store.js";
 import { lisbonParts, shouldFireDaily } from "../time/lisbon.js";
-import { matchesAgtKeywords } from "./keywords.js";
+import { matchesKeywords } from "./keywords.js";
 import { upsertAllow } from "./store.js";
 import { listWaAccounts } from "./sync.js";
 
@@ -19,11 +20,13 @@ interface AgtJson {
 }
 
 export async function runAgtKbIfDue(): Promise<{ ran: boolean; detail: string }> {
+  const schedule = getSchedule("agt-kb");
+  if (!schedule?.enabled) return { ran: false, detail: "agendamento desligado" };
   if (
     !shouldFireDaily({
       lastDateKey: getCursor(CURSOR),
-      hour: 12,
-      weekdaysOnly: false,
+      hour: schedule.hour,
+      weekdaysOnly: schedule.weekdaysOnly,
     })
   ) {
     return { ran: false, detail: "não devido" };
@@ -35,17 +38,29 @@ export async function runAgtKbIfDue(): Promise<{ ran: boolean; detail: string }>
 
 export async function runAgtKb(): Promise<string> {
   const accounts = await listWaAccounts();
-  const jidWanted = commsConfig.agtGroupJid;
-  const lines: string[] = [`AGT KB — ${lisbonParts().dateKey}`, ""];
+  const watches = listWaWatches().filter((w) => w.enabled && w.kbEnabled);
+  const lines: string[] = [`KB WhatsApp — ${lisbonParts().dateKey}`, ""];
   let added = 0;
   let mediaCopied = 0;
 
-  for (const account of accounts) {
+  if (!watches.length) {
+    const text = "Nenhuma vigia WhatsApp activa.";
+    await sendCommsMail(`[BWB Comms] KB WhatsApp ${lisbonParts().dateKey}`, text);
+    return text;
+  }
+
+  for (const watch of watches) {
+    const account = accounts.find((a) => a.id === watch.accountId);
+    if (!account) {
+      lines.push(`[${watch.accountId}] conta em falta`);
+      continue;
+    }
     const messagesDb = path.join(account.storeDir, "messages.db");
     let bridge: Database.Database;
     try {
       bridge = new Database(messagesDb, { readonly: true, fileMustExist: true });
     } catch {
+      lines.push(`[${watch.label}] messages.db inacessível`);
       continue;
     }
     try {
@@ -53,12 +68,12 @@ export async function runAgtKb(): Promise<string> {
         .prepare(
           `SELECT jid, name FROM chats WHERE jid = ? OR lower(name) = lower(?) LIMIT 1`
         )
-        .get(jidWanted, GROUP_NAME) as { jid: string; name: string } | undefined;
+        .get(watch.chatJid, watch.label) as { jid: string; name: string } | undefined;
       if (!chat) {
-        lines.push(`[${account.id}] grupo ${GROUP_NAME} não encontrado`);
+        lines.push(`[${account.id}] ${watch.label} não encontrado`);
         continue;
       }
-      upsertAllow(account.id, chat.jid, chat.name || GROUP_NAME);
+      upsertAllow(account.id, chat.jid, chat.name || watch.label);
       const cursorKey = `agt:last-ts:${account.id}:${chat.jid}`;
       const lastTsRaw = getCursor(cursorKey);
       if (lastTsRaw === null) {
@@ -95,13 +110,13 @@ export async function runAgtKb(): Promise<string> {
         if (ts > maxTs) maxTs = ts;
         const text = String(row.content ?? "");
         const hasMedia = Boolean(row.media_type && row.media_type !== "text");
-        if (!matchesAgtKeywords(text) && !hasMedia) continue;
+        if (!matchesKeywords(text, watch.keywords) && !hasMedia) continue;
 
         if (hasMedia) {
           const copied = await copyGroupMedia(account.storeDir, chat.jid, row.filename);
           mediaCopied += copied;
         }
-        if (!matchesAgtKeywords(text) && hasMedia) {
+        if (!matchesKeywords(text, watch.keywords) && hasMedia) {
           kb.documentos_legais_normativos = kb.documentos_legais_normativos ?? [];
           kb.documentos_legais_normativos.push({
             id: nextDocId(kb),

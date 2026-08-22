@@ -48,6 +48,8 @@
 - [x] MCP read-only `POST /mcp` (Bearer) — sem writes
 - [x] Deploy: `deploy/install-comms.sh` (não reinicia conectores Claude)
 - [x] Réplica dos 2 scheduled tasks Claude: triage INBOX (07:00 úteis) e AGT KB (12:00)
+- [x] Regras e horários na BD SQLite (`mail_rules`, `wa_watches`, `schedules`); carga inicial única, sem reler Claude
+- [x] Admin humana: `/admin/rules` (conta, tipo, remetente, pasta IMAP, agendamentos); `/admin/whatsapp` por nome da conversa; jobs sem badges Claude
 
 ## Next
 

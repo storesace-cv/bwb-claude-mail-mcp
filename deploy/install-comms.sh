@@ -27,6 +27,7 @@ if [[ -d "$WA_STATE/accounts" ]]; then
   chmod 750 "$WA_STATE/accounts" "$WA_STATE/accounts/a" "$WA_STATE/accounts/b" \
     "$WA_STATE/accounts/a/store" "$WA_STATE/accounts/b/store" 2>/dev/null || true
   chmod 640 "$WA_STATE/accounts/a/store/whatsapp.db" "$WA_STATE/accounts/b/store/whatsapp.db" 2>/dev/null || true
+  chmod 640 "$WA_STATE/accounts/a/store/messages.db" "$WA_STATE/accounts/b/store/messages.db" 2>/dev/null || true
   chmod 640 "$WA_STATE/accounts/a/store/whatsapp.db-wal" "$WA_STATE/accounts/a/store/whatsapp.db-shm" 2>/dev/null || true
   chmod 640 "$WA_STATE/accounts/b/store/whatsapp.db-wal" "$WA_STATE/accounts/b/store/whatsapp.db-shm" 2>/dev/null || true
 fi

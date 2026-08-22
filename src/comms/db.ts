@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { commsConfig } from "./config.js";
+import { seedInitialIfEmpty } from "./rules/seed-initial.js";
 
 let db: Database.Database | null = null;
 
@@ -12,6 +13,7 @@ export function getDb(): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   migrate(db);
+  seedInitialIfEmpty();
   return db;
 }
 
@@ -98,6 +100,52 @@ function migrate(database: Database.Database): void {
     CREATE TABLE IF NOT EXISTS job_cursors (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mail_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      account_id TEXT NOT NULL DEFAULT '*',
+      match_from TEXT NOT NULL DEFAULT '',
+      match_subject TEXT NOT NULL DEFAULT '',
+      subject_prefix TEXT NOT NULL DEFAULT '',
+      from_domain TEXT NOT NULL DEFAULT '',
+      dest_folder TEXT NOT NULL DEFAULT '',
+      split_promo INTEGER NOT NULL DEFAULT 0,
+      catch_promo INTEGER NOT NULL DEFAULT 0,
+      catch_digest INTEGER NOT NULL DEFAULT 0,
+      odoo_notifications INTEGER NOT NULL DEFAULT 0,
+      catch_invoice INTEGER NOT NULL DEFAULT 0,
+      catch_security INTEGER NOT NULL DEFAULT 0,
+      purge_after_days INTEGER NOT NULL DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS wa_watches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      label TEXT NOT NULL DEFAULT '',
+      keywords TEXT NOT NULL DEFAULT '',
+      kb_enabled INTEGER NOT NULL DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      UNIQUE (account_id, chat_jid)
+    );
+
+    CREATE TABLE IF NOT EXISTS schedules (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      job TEXT NOT NULL,
+      hour INTEGER NOT NULL,
+      weekdays_only INTEGER NOT NULL DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS mail_folders (
+      account_id TEXT NOT NULL,
+      path TEXT NOT NULL,
+      PRIMARY KEY (account_id, path)
     );
   `);
 }

@@ -5,6 +5,8 @@ import { ImapFlow } from "imapflow";
 import { listMailAccounts, myAddresses, type MailAccount } from "../accounts.js";
 import { commsConfig } from "../config.js";
 import { getDb, getCursor, setCursor } from "../db.js";
+import { replaceMailFolders } from "../rules/store.js";
+import { listMailboxPaths } from "./imap.js";
 import { extractPdfText, isInvoiceCandidate } from "./invoices.js";
 import { imapAuth, ensureFreshAccessToken } from "../oauth.js";
 import {
@@ -96,6 +98,11 @@ export async function syncMailAccount(account: MailAccount): Promise<{ fetched: 
   let fetched = 0;
   const client = await openClient(account);
   try {
+    try {
+      replaceMailFolders(account.id, await listMailboxPaths(client));
+    } catch {
+      // listing folders is best-effort for the admin UI
+    }
     const folders = ["INBOX"];
     if (account.mail.sentFolder) folders.push(account.mail.sentFolder);
     for (const folder of folders) {
