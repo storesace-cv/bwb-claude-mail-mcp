@@ -12,7 +12,7 @@ import {
 } from "../jobs/run.js";
 import { getManualJob, startManualJob } from "../jobs/manual.js";
 import { deleteUnansweredThreads } from "../mail/delete-threads.js";
-import { reapplyInvoiceWhitelist } from "../mail/invoice-reapply.js";
+import { runReapplyInvoices } from "../mail/invoice-reapply.js";
 import { buildChatGptPack } from "../pack.js";
 import { loadRules, saveRules } from "../rules/apply.js";
 import {
@@ -159,6 +159,7 @@ adminRouter.get("/settings", (req, res) => {
           </label>
           <div class="actions"><button type="submit">Guardar listas</button></div>
         </form>
+        <p class="muted">Re-aplicar usa o prazo de antiguidade <strong>e</strong> as listas brancas (texto do PDF). Documentos que falhem qualquer um são apagados do S3 e da base.</p>
         <form method="post" action="/admin/settings/reapply" class="actions">
           <button type="submit" class="secondary">Re-aplicar</button>
         </form>
@@ -190,21 +191,13 @@ adminRouter.post("/settings", (req, res) => {
   }
 });
 
-adminRouter.post("/settings/reapply", async (req, res) => {
+adminRouter.post("/settings/reapply", (req, res) => {
   if (!checkCsrf(req)) {
     res.status(403).send("CSRF");
     return;
   }
-  try {
-    const r = await reapplyInvoiceWhitelist();
-    res.redirect(`/admin/settings?reapplied=${r.removed}`);
-  } catch (err) {
-    res.type("html").send(
-      layout("Definições", header("settings"), {
-        error: err instanceof Error ? err.message : String(err),
-      })
-    );
-  }
+  const id = startManualJob("Re-aplicar documentos", "reapply", runReapplyInvoices);
+  res.redirect(303, `/admin/jobs/run/${id}`);
 });
 
 adminRouter.get("/change-password", (_req, res) => {
@@ -1202,6 +1195,7 @@ const JOB_STEP_TITLES: Record<string, string> = {
   "wa-sync": "Leitura do WhatsApp",
   "organizar-inbox": "Organizar INBOX",
   "agt-kb": "Base de conhecimento",
+  "invoices-reapply": "Re-aplicar documentos",
 };
 
 function humanJobLine(line: string): string {
@@ -1236,7 +1230,7 @@ function jobRunPage(title: string, results: JobResult | JobResult[]): string {
       <h2>${esc(title)}</h2>
       <p>${allOk ? "A corrida terminou bem." : "A corrida terminou com erros. Vê o detalhe em baixo."}</p>
       ${steps}
-      <p class="actions"><a class="btn secondary" href="/admin/jobs">Voltar aos jobs</a></p>
+      <p class="actions"><a class="btn secondary" href="/admin/settings">Voltar às definições</a> <a class="btn secondary" href="/admin/jobs">Voltar aos jobs</a></p>
     </div>`;
 }
 

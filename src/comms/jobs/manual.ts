@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { JobResult } from "./run.js";
 import { emptyTrace, runWithJobSink, type JobTrace } from "./progress.js";
 
-export type ManualJobKind = "mail" | "wa" | "triage" | "agt";
+export type ManualJobKind = "mail" | "wa" | "triage" | "agt" | "reapply";
 
 export interface ManualJob {
   id: string;

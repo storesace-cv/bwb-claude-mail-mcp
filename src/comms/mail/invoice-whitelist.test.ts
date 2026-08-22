@@ -5,6 +5,7 @@ import {
   foldText,
   issuerLinesFromFromHeader,
   shouldKeepInvoice,
+  shouldKeepStoredInvoice,
 } from "./invoice-whitelist.js";
 
 describe("foldText", () => {
@@ -42,6 +43,51 @@ describe("documentAccepted", () => {
 
   it("review never keeps", () => {
     assert.equal(shouldKeepInvoice("review", pdf, "jorge&peixinho", "bwb"), false);
+  });
+});
+
+describe("shouldKeepStoredInvoice", () => {
+  const now = Date.now();
+  const cutoff = now - 365 * 86400000;
+  const pdf = "Factura Jorge Peixinho BWB";
+
+  it("drops mail older than the cutoff even if lists match", () => {
+    assert.equal(
+      shouldKeepStoredInvoice({
+        dateMs: cutoff - 1000,
+        cutoffMs: cutoff,
+        extractedText: pdf,
+        issuers: "jorge&peixinho",
+        recipients: "",
+      }),
+      false
+    );
+  });
+
+  it("keeps recent mail matching the issuer list", () => {
+    assert.equal(
+      shouldKeepStoredInvoice({
+        dateMs: now,
+        cutoffMs: cutoff,
+        extractedText: pdf,
+        issuers: "jorge&peixinho",
+        recipients: "",
+      }),
+      true
+    );
+  });
+
+  it("with empty lists, keeps anything inside the age window", () => {
+    assert.equal(
+      shouldKeepStoredInvoice({
+        dateMs: now,
+        cutoffMs: cutoff,
+        extractedText: "sem palavras",
+        issuers: "",
+        recipients: "",
+      }),
+      true
+    );
   });
 });
 

@@ -69,6 +69,23 @@ export function recipientLinesNonEmpty(raw: string): boolean {
   return parseWhitelistLines(raw).length > 0;
 }
 
+export function whitelistHasEntries(issuers: string, recipients: string): boolean {
+  return recipientLinesNonEmpty(issuers) || recipientLinesNonEmpty(recipients);
+}
+
+/** Keep a stored invoice only if it is within the age window and, when lists exist, matches them. */
+export function shouldKeepStoredInvoice(opts: {
+  dateMs: number;
+  cutoffMs: number;
+  extractedText: string;
+  issuers: string;
+  recipients: string;
+}): boolean {
+  if (!Number.isFinite(opts.dateMs) || opts.dateMs < opts.cutoffMs) return false;
+  if (!whitelistHasEntries(opts.issuers, opts.recipients)) return true;
+  return documentAccepted(opts.extractedText, opts.issuers, opts.recipients);
+}
+
 /** Keyword lines for the issuer list from an email From header (name AND-words + email). */
 export function issuerLinesFromFromHeader(fromHeader: string): string[] {
   const raw = fromHeader.trim();
