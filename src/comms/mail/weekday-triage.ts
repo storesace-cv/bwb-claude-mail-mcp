@@ -21,12 +21,12 @@ export async function runWeekdayInboxTriageIfDue(): Promise<{ ran: boolean; deta
   ) {
     return { ran: false, detail: "não devido" };
   }
-  const report = await runWeekdayInboxTriage();
+  const report = await runWeekdayInboxTriage({ notify: true });
   setCursor(CURSOR, lisbonParts().dateKey);
   return { ran: true, detail: report.slice(0, 200) };
 }
 
-export async function runWeekdayInboxTriage(): Promise<string> {
+export async function runWeekdayInboxTriage(opts?: { notify?: boolean }): Promise<string> {
   const accounts = await listMailAccounts();
   const sections: string[] = [
     `Triage INBOX — ${lisbonParts().dateKey} (Europe/Lisbon)`,
@@ -83,6 +83,8 @@ export async function runWeekdayInboxTriage(): Promise<string> {
     sections.push("");
   }
   const text = sections.join("\n");
-  await sendCommsMail(`[BWB Comms] Triage INBOX ${lisbonParts().dateKey}`, text);
+  if (opts?.notify) {
+    await sendCommsMail(`[BWB Comms] Triage INBOX ${lisbonParts().dateKey}`, text);
+  }
   return text;
 }

@@ -31,12 +31,12 @@ export async function runAgtKbIfDue(): Promise<{ ran: boolean; detail: string }>
   ) {
     return { ran: false, detail: "não devido" };
   }
-  const detail = await runAgtKb();
+  const detail = await runAgtKb({ notify: true });
   setCursor(CURSOR, lisbonParts().dateKey);
   return { ran: true, detail: detail.slice(0, 200) };
 }
 
-export async function runAgtKb(): Promise<string> {
+export async function runAgtKb(opts?: { notify?: boolean }): Promise<string> {
   const accounts = await listWaAccounts();
   const watches = listWaWatches().filter((w) => w.enabled && w.kbEnabled);
   const lines: string[] = [`KB WhatsApp — ${lisbonParts().dateKey}`, ""];
@@ -45,7 +45,9 @@ export async function runAgtKb(): Promise<string> {
 
   if (!watches.length) {
     const text = "Nenhuma vigia WhatsApp activa.";
-    await sendCommsMail(`[BWB Comms] KB WhatsApp ${lisbonParts().dateKey}`, text);
+    if (opts?.notify) {
+      await sendCommsMail(`[BWB Comms] KB WhatsApp ${lisbonParts().dateKey}`, text);
+    }
     return text;
   }
 
@@ -180,7 +182,9 @@ export async function runAgtKb(): Promise<string> {
 
   if (added === 0) lines.push("Nada de novo relevante nas palavras-chave.");
   const text = lines.join("\n");
-  await sendCommsMail(`[BWB Comms] AGT KB ${lisbonParts().dateKey}`, text);
+  if (opts?.notify) {
+    await sendCommsMail(`[BWB Comms] AGT KB ${lisbonParts().dateKey}`, text);
+  }
   return text;
 }
 
