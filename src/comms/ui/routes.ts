@@ -9,6 +9,7 @@ import { buildChatGptPack } from "../pack.js";
 import { loadRules, saveRules } from "../rules/apply.js";
 import {
   deleteMailRule,
+  duplicateMailRule,
   deleteWaWatch,
   getMailRule,
   insertMailRule,
@@ -510,33 +511,66 @@ adminRouter.get("/rules", async (_req, res) => {
     </div>
     <div class="panel">
       <h2>Regras activas</h2>
-      <table>
-        <thead><tr><th>Nome</th><th>Tipo</th><th>Conta</th><th>Quando</th><th>Pasta</th><th></th></tr></thead>
+      <div class="table-scroll">
+      <table class="one-line">
+        <thead><tr>
+          <th>Editar</th>
+          <th>Duplicar</th>
+          <th>Estado</th>
+          <th>Apagar</th>
+          <th>#</th>
+          <th>Nome</th>
+          <th>Tipo</th>
+          <th>Conta</th>
+          <th>From</th>
+          <th>Assunto</th>
+          <th>Prefixo</th>
+          <th>Domínio</th>
+          <th>Pasta</th>
+          <th>Purge</th>
+          <th>Só promo</th>
+          <th>Catch promo</th>
+          <th>Catch digest</th>
+          <th>Odoo notif.</th>
+          <th>Facturas</th>
+          <th>Segurança</th>
+          <th>Ligado</th>
+        </tr></thead>
         <tbody>
           ${rules
             .map((r) => {
-              const acc = r.accountId === "*" ? "Todas" : accounts.find((a) => a.id === r.accountId)?.label || r.accountId;
+              const acc =
+                r.accountId === "*"
+                  ? "Todas"
+                  : accounts.find((a) => a.id === r.accountId)?.label || r.accountId;
               return `<tr>
-                <td>${esc(r.name)} ${r.enabled ? "" : '<span class="badge">off</span>'}</td>
+                <td><a class="btn secondary" href="/admin/rules/${r.id}">Editar</a></td>
+                <td><form method="post" action="/admin/rules/${r.id}/duplicate"><button class="secondary" type="submit">Duplicar</button></form></td>
+                <td><form method="post" action="/admin/rules/${r.id}/toggle"><button class="secondary" type="submit">${r.enabled ? "Desligar" : "Ligar"}</button></form></td>
+                <td><form method="post" action="/admin/rules/${r.id}/delete"><button class="secondary" type="submit">Apagar</button></form></td>
+                <td class="mono">${r.id}</td>
+                <td>${esc(r.name)}</td>
                 <td>${esc(kindLabel(r.kind))}</td>
                 <td>${esc(acc)}</td>
-                <td>${esc(ruleWhen(r))}</td>
-                <td>${esc(r.destFolder || "—")}</td>
-                <td>
-                  <a href="/admin/rules/${r.id}">editar</a>
-                  <form method="post" action="/admin/rules/${r.id}/toggle" class="inline-form">
-                    <button class="secondary" type="submit">${r.enabled ? "Desligar" : "Ligar"}</button>
-                  </form>
-                  <form method="post" action="/admin/rules/${r.id}/delete" class="inline-form">
-                    <input type="hidden" name="id" value="${r.id}">
-                    <button class="secondary" type="submit">Apagar</button>
-                  </form>
-                </td>
+                <td>${esc(dash(r.matchFrom))}</td>
+                <td>${esc(dash(r.matchSubject))}</td>
+                <td>${esc(dash(r.subjectPrefix))}</td>
+                <td>${esc(dash(r.fromDomain))}</td>
+                <td>${esc(dash(r.destFolder))}</td>
+                <td>${r.purgeAfterDays || "—"}</td>
+                <td>${yn(r.splitPromo)}</td>
+                <td>${yn(r.catchPromo)}</td>
+                <td>${yn(r.catchDigest)}</td>
+                <td>${yn(r.odooNotifications)}</td>
+                <td>${yn(r.catchInvoice)}</td>
+                <td>${yn(r.catchSecurity)}</td>
+                <td>${r.enabled ? "sim" : "não"}</td>
               </tr>`;
             })
             .join("")}
         </tbody>
       </table>
+      </div>
     </div>
     <div class="panel">
       <h2>Arquivo extra (pasta exacta)</h2>
@@ -588,7 +622,7 @@ adminRouter.get("/rules", async (_req, res) => {
         </tbody>
       </table>
     </div>`;
-  res.type("html").send(layout("Regras", body));
+  res.type("html").send(layout("Regras", body, { wrapClass: "wide" }));
 });
 
 adminRouter.get("/rules/:id", async (req, res) => {
@@ -636,6 +670,19 @@ adminRouter.post("/rules/:id/toggle", (req, res) => {
   const rule = getMailRule(id);
   if (rule) setMailRuleEnabled(id, !rule.enabled);
   res.redirect("/admin/rules");
+});
+
+adminRouter.post("/rules/:id/duplicate", (req, res) => {
+  if (!checkCsrf(req)) {
+    res.status(403).send("CSRF");
+    return;
+  }
+  const copyId = duplicateMailRule(Number(req.params.id));
+  if (!copyId) {
+    res.status(404).send("not found");
+    return;
+  }
+  res.redirect(`/admin/rules/${copyId}`);
 });
 
 adminRouter.post("/rules/:id/delete", (req, res) => {
@@ -798,6 +845,14 @@ adminRouter.get("/pack.md", (_req, res) => {
   res.type("text/markdown; charset=utf-8").send(buildChatGptPack());
 });
 
+function yn(v: boolean): string {
+  return v ? "sim" : "—";
+}
+
+function dash(v: string): string {
+  return v || "—";
+}
+
 function hourOptions(selected: number): string {
   return Array.from({ length: 24 }, (_, h) => {
     const label = `${String(h).padStart(2, "0")}:00`;
@@ -814,22 +869,6 @@ function kindLabel(kind: string): string {
     custom: "Pasta",
   };
   return map[kind] ?? kind;
-}
-
-function ruleWhen(r: MailRule): string {
-  const bits = [
-    r.matchFrom,
-    r.fromDomain,
-    r.subjectPrefix,
-    r.matchSubject,
-    r.catchInvoice ? "facturas" : "",
-    r.catchSecurity ? "segurança" : "",
-    r.catchPromo ? "texto promo" : "",
-    r.catchDigest ? "digest" : "",
-    r.splitPromo ? "só promo" : "",
-    r.odooNotifications ? "Odoo notif." : "",
-  ].filter(Boolean);
-  return bits.join(" · ") || "(catch-all)";
 }
 
 function uniqueFolders(cached: string[]): string[] {

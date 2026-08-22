@@ -105,6 +105,16 @@ export function insertMailRule(r: Omit<MailRule, "id">): number {
   return Number(info.lastInsertRowid);
 }
 
+export function duplicateMailRule(id: number): number | undefined {
+  const src = getMailRule(id);
+  if (!src) return undefined;
+  const { id: _omit, ...rest } = src;
+  return insertMailRule({
+    ...rest,
+    name: `${src.name} (cópia)`,
+  });
+}
+
 export function updateMailRule(r: MailRule): void {
   getDb()
     .prepare(

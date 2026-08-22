@@ -6,7 +6,7 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export function layout(title: string, body: string, opts?: { flash?: string; error?: string }): string {
+export function layout(title: string, body: string, opts?: { flash?: string; error?: string; wrapClass?: string }): string {
   return `<!DOCTYPE html>
 <html lang="pt">
 <head>
@@ -27,6 +27,7 @@ export function layout(title: string, body: string, opts?: { flash?: string; err
     a { color: var(--accent-soft); text-decoration: none; }
     a:hover { text-decoration: underline; text-underline-offset: 3px; color: var(--text); }
     .wrap { max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem 5rem; }
+    .wrap.wide { max-width: none; padding: 1.25rem 1rem 4rem; }
     header.app { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-soft); flex-wrap: wrap; }
     header.app h1 { font-size: 1.25rem; font-weight: 600; margin: 0; letter-spacing: -.03em; }
     header.app nav { display: flex; gap: 1rem; font-size: .9rem; color: var(--muted); flex-wrap: wrap; }
@@ -42,18 +43,27 @@ export function layout(title: string, body: string, opts?: { flash?: string; err
     input, select, textarea { font: inherit; font-size: 1rem; color: var(--text); background: var(--fill); border: 1px solid var(--border); border-radius: 10px; padding: .65rem .75rem; }
     textarea { min-height: 6rem; }
     .actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; margin-top: .5rem; }
-    button, .btn { appearance: none; font: inherit; font-size: .9375rem; font-weight: 500; border-radius: 980px; padding: .55rem 1.15rem; border: none; cursor: pointer; background: var(--accent); color: #fff; text-decoration: none; display: inline-block; }
+    button, .btn { appearance: none; font: inherit; font-size: .9375rem; font-weight: 500; border-radius: 980px; padding: .55rem 1.15rem; border: none; cursor: pointer; background: var(--accent); color: #fff; text-decoration: none; display: inline-block; text-align: center; }
     button.secondary, .btn.secondary { background: var(--fill-hover); color: var(--text); }
+    button.secondary:hover, .btn.secondary:hover { text-decoration: none; background: var(--border-soft); }
     table { width: 100%; border-collapse: collapse; font-size: .875rem; }
     th, td { text-align: left; padding: .65rem .4rem; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
     th { color: var(--muted); font-weight: 500; font-size: .75rem; }
+    .table-scroll { overflow-x: auto; }
+    table.one-line th, table.one-line td { white-space: nowrap; vertical-align: middle; padding: .45rem .4rem; font-size: .75rem; }
+    table.one-line th { font-size: .6875rem; }
+    table.one-line form { margin: 0; display: block; }
+    table.one-line .btn, table.one-line button {
+      width: 5.6rem; box-sizing: border-box; font-size: .75rem; font-weight: 500;
+      padding: .4rem .45rem; border-radius: 8px;
+    }
     .mono { font-family: var(--mono); font-size: .8rem; }
     .muted { color: var(--muted); }
     .badge { display: inline-block; font-size: .6875rem; padding: .15rem .5rem; border-radius: 980px; background: var(--fill-hover); }
   </style>
 </head>
 <body>
-  <div class="wrap">
+  <div class="wrap${opts?.wrapClass ? ` ${esc(opts.wrapClass)}` : ""}">
     ${opts?.flash ? `<div class="flash">${esc(opts.flash)}</div>` : ""}
     ${opts?.error ? `<div class="error">${esc(opts.error)}</div>` : ""}
     ${body}
