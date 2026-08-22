@@ -35,7 +35,19 @@ export async function listMailAccounts(): Promise<MailAccount[]> {
     const parsed = JSON.parse(raw) as AccountsFile;
     return Array.isArray(parsed.accounts) ? parsed.accounts : [];
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "EACCES" || code === "EPERM") {
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
+          msg: "mail accounts unreadable",
+          path: commsConfig.mailAccountsFile,
+          code,
+        })
+      );
+      return [];
+    }
     throw err;
   }
 }

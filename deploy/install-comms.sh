@@ -19,6 +19,11 @@ mkdir -p "$STATE_DIR/files/invoices"
 chown -R bwbcomms:bwbcomms "$STATE_DIR"
 chmod 700 "$STATE_DIR" "$STATE_DIR/files" "$STATE_DIR/files/invoices"
 
+if [[ -d "$MAIL_STATE" ]]; then
+  # 750: bwbcomms está no grupo mailmcp e precisa de atravessar o directório (700 bloqueava a UI).
+  chmod 750 "$MAIL_STATE" || true
+  chgrp mailmcp "$MAIL_STATE" || true
+fi
 if [[ -f "$MAIL_STATE/accounts.json" ]]; then
   chmod 660 "$MAIL_STATE/accounts.json" || true
   chgrp mailmcp "$MAIL_STATE/accounts.json" || true

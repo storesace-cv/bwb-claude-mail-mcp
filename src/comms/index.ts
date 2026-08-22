@@ -36,6 +36,29 @@ async function main(): Promise<void> {
 
   app.use("/admin", adminRouter);
 
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        msg: "request failed",
+        error: err instanceof Error ? err.message : String(err),
+      })
+    );
+    if (!res.headersSent) res.status(500).type("text").send("Erro interno");
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        msg: "unhandledRejection",
+        error: reason instanceof Error ? reason.stack ?? reason.message : String(reason),
+      })
+    );
+  });
+
   app.listen(commsConfig.port, commsConfig.host, () => {
     console.log(
       JSON.stringify({
