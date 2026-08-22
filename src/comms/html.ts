@@ -82,7 +82,26 @@ export function layout(
     .job-step h3 { margin: 0 0 .4rem; font-size: .95rem; }
     .job-lines { margin: .5rem 0 0; padding-left: 1.15rem; }
     .job-lines li { margin: .3rem 0; }
-    tr.job-related td { background: var(--fill); }
+    .job-split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.25rem; padding-top: 1.15rem; border-top: 1px solid var(--border-soft); align-items: start; }
+    @media (max-width: 720px) { .job-split { grid-template-columns: 1fr; } }
+    .job-col { display: flex; flex-direction: column; gap: .75rem; }
+    .job-col h2 { margin: 0 0 .15rem; }
+    .job-col form { margin: 0; }
+    .job-col button { width: 100%; }
+    .has-tip { position: relative; }
+    .has-tip[data-help]::after {
+      content: attr(data-help);
+      position: absolute; left: 0; right: auto; top: calc(100% + .45rem);
+      z-index: 8; width: max(100%, 16rem); max-width: 22rem;
+      background: #1d1d1f; color: #fff; font-size: .75rem; font-weight: 400;
+      line-height: 1.4; padding: .6rem .75rem; border-radius: 8px;
+      text-align: left; white-space: normal;
+      opacity: 0; visibility: hidden; pointer-events: none;
+      box-shadow: var(--shadow);
+    }
+    .has-tip[data-help]:hover::after, .has-tip[data-help]:focus::after {
+      opacity: 1; visibility: visible;
+    }
   </style>
 </head>
 <body>

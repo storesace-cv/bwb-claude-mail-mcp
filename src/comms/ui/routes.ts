@@ -800,6 +800,15 @@ adminRouter.post("/schedules/:id", (req, res) => {
   res.redirect("/admin/rules");
 });
 
+const MAIL_HELP =
+  "Lê as caixas de correio, guarda mensagens novas no Comms (não respondidos e facturas) e aplica regras de pastas. Corre primeiro.";
+const TRIAGE_HELP =
+  "Percorre a INBOX: lista não lidos, arquiva helpdesk por cliente e newsletters/marketing. Corre depois de actualizar o correio. O email do relatório só sai na corrida agendada das 07:00.";
+const WA_HELP =
+  "Lê as conversas com vigia ligada e guarda mensagens novas no arquivo. Corre primeiro.";
+const AGT_HELP =
+  "Percorre as vigias com KB e acrescenta entradas à base de conhecimento. Corre depois de actualizar o WhatsApp. O email do relatório só sai na corrida agendada das 12:00.";
+
 adminRouter.get("/jobs", async (_req, res) => {
   const admin = await getAdmin();
   const schedules = listSchedules();
@@ -822,18 +831,28 @@ adminRouter.get("/jobs", async (_req, res) => {
             .join("")}
         </tbody>
       </table>
-      <form method="post" action="/admin/jobs/mail" class="actions">
-        <button type="submit">Correr mail agora</button>
-      </form>
-      <form method="post" action="/admin/jobs/wa" class="actions">
-        <button class="secondary" type="submit">Correr WhatsApp agora</button>
-      </form>
-      <form method="post" action="/admin/jobs/triage" class="actions">
-        <button type="submit">Correr organizar INBOX agora</button>
-      </form>
-      <form method="post" action="/admin/jobs/agt" class="actions">
-        <button class="secondary" type="submit">Correr base de conhecimento agora</button>
-      </form>
+      <div class="job-split">
+        <div class="job-col">
+          <h2>Correio</h2>
+          <p class="muted">Por esta ordem, de cima para baixo.</p>
+          <form method="post" action="/admin/jobs/mail">
+            <button class="has-tip" type="submit" title="${esc(MAIL_HELP)}" data-help="${esc(MAIL_HELP)}">1. Actualizar correio</button>
+          </form>
+          <form method="post" action="/admin/jobs/triage">
+            <button class="secondary has-tip" type="submit" title="${esc(TRIAGE_HELP)}" data-help="${esc(TRIAGE_HELP)}">2. Organizar INBOX</button>
+          </form>
+        </div>
+        <div class="job-col">
+          <h2>WhatsApp</h2>
+          <p class="muted">Por esta ordem, de cima para baixo.</p>
+          <form method="post" action="/admin/jobs/wa">
+            <button class="has-tip" type="submit" title="${esc(WA_HELP)}" data-help="${esc(WA_HELP)}">1. Actualizar WhatsApp</button>
+          </form>
+          <form method="post" action="/admin/jobs/agt">
+            <button class="secondary has-tip" type="submit" title="${esc(AGT_HELP)}" data-help="${esc(AGT_HELP)}">2. Actualizar base de conhecimento</button>
+          </form>
+        </div>
+      </div>
     </div>`;
   res.type("html").send(layout("Jobs", body));
 });
@@ -1010,7 +1029,7 @@ function jobsContextPanel(opts: { highlight: string[]; note: string }): string {
               <td>${s.enabled ? "ligado" : "desligado"}</td>
               <td>${
                 run
-                  ? `<form method="post" action="${esc(run)}"><button class="secondary" type="submit">Correr agora</button></form>`
+                  ? `<form method="post" action="${esc(run)}"><button class="secondary has-tip" type="submit" title="${esc(s.id === "agt-kb" ? AGT_HELP : TRIAGE_HELP)}" data-help="${esc(s.id === "agt-kb" ? AGT_HELP : TRIAGE_HELP)}">Correr agora</button></form>`
                   : ""
               }</td>
             </tr>`;
