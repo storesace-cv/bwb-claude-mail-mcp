@@ -11,12 +11,6 @@ WA_STATE="${WA_STATE:-/var/lib/whatsapp-mcp}"
 DOMAIN="${DOMAIN:-comms.bwb.pt}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-jorge.peixinho@bwb.pt}"
 
-NODE_MAJOR="$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0)"
-if [[ "$NODE_MAJOR" -lt 22 ]]; then
-  echo "Node.js >= 22 required (node:sqlite). Found: $(node -v || true)"
-  exit 1
-fi
-
 echo "==> User and directories"
 id bwbcomms >/dev/null 2>&1 || useradd --system --home "$STATE_DIR" --shell /usr/sbin/nologin --comment "bwb-comms" bwbcomms
 id mailmcp >/dev/null 2>&1 && usermod -aG mailmcp bwbcomms || true

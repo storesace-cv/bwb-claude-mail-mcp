@@ -1,21 +1,21 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import Database from "better-sqlite3";
 import { commsConfig } from "./config.js";
 
-let db: DatabaseSync | null = null;
+let db: Database.Database | null = null;
 
-export function getDb(): DatabaseSync {
+export function getDb(): Database.Database {
   if (db) return db;
   mkdirSync(path.dirname(commsConfig.dbPath), { recursive: true, mode: 0o700 });
-  db = new DatabaseSync(commsConfig.dbPath);
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA foreign_keys = ON");
+  db = new Database(commsConfig.dbPath);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
   migrate(db);
   return db;
 }
 
-function migrate(database: DatabaseSync): void {
+function migrate(database: Database.Database): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY

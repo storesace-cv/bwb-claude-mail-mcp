@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import Database from "better-sqlite3";
 import { getDb } from "../db.js";
 
 export function filterAllowedJids<T extends { chat_jid: string }>(
@@ -43,12 +43,12 @@ export function removeAllow(accountId: string, chatJid: string): void {
   getDb().prepare("DELETE FROM wa_allowlist WHERE account_id = ? AND chat_jid = ?").run(accountId, chatJid);
 }
 
-function tableColumns(bridge: DatabaseSync, table: string): Set<string> {
+function tableColumns(bridge: Database.Database, table: string): Set<string> {
   const rows = bridge.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   return new Set(rows.map((r) => r.name));
 }
 
-function pickTable(bridge: DatabaseSync, names: string[]): string | null {
+function pickTable(bridge: Database.Database, names: string[]): string | null {
   const tables = bridge
     .prepare(`SELECT name FROM sqlite_master WHERE type='table'`)
     .all() as Array<{ name: string }>;
@@ -64,7 +64,7 @@ export function ingestWhatsappDb(accountId: string, dbPath: string): { inserted:
   const allowed = new Set(allow.map((a) => a.chat_jid));
   if (!allowed.size) return { inserted: 0 };
 
-  const bridge = new DatabaseSync(dbPath, { readOnly: true });
+  const bridge = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {
     const table = pickTable(bridge, ["messages", "message"]);
     if (!table) return { inserted: 0 };
