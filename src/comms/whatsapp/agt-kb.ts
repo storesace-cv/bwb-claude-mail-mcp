@@ -59,7 +59,19 @@ export async function runAgtKb(): Promise<string> {
         continue;
       }
       upsertAllow(account.id, chat.jid, chat.name || GROUP_NAME);
-      const lastTs = Number(getCursor(`agt:last-ts:${account.id}:${chat.jid}`) ?? "0");
+      const cursorKey = `agt:last-ts:${account.id}:${chat.jid}`;
+      const lastTsRaw = getCursor(cursorKey);
+      if (lastTsRaw === null) {
+        const maxRow = bridge
+          .prepare(`SELECT MAX(timestamp) AS m FROM messages WHERE chat_jid = ?`)
+          .get(chat.jid) as { m: number | null };
+        setCursor(cursorKey, String(maxRow.m ?? 0));
+        lines.push(
+          `[${account.id}] ${chat.name}: cursor inicializado (sem reimportar histórico)`
+        );
+        continue;
+      }
+      const lastTs = Number(lastTsRaw);
       const rows = bridge
         .prepare(
           `SELECT id, sender, content, timestamp, media_type, filename, url
