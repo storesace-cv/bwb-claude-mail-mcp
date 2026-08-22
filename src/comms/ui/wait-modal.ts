@@ -34,12 +34,6 @@ export const waitModalScript = `(function () {
         { key: "purge", label: "Apagar documentos que não passam" }
       ]
     }
-      lead: "A re-aplicar prazo de antiguidade e listas brancas aos documentos já guardados.",
-      steps: [
-        { key: "filter", label: "Antiguidade e listas brancas" },
-        { key: "purge", label: "Apagar documentos que não passam" }
-      ]
-    }
   };
 
   var currentStepKeys = [];
