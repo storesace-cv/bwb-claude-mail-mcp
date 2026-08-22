@@ -1,9 +1,9 @@
 import { promises as fs } from "node:fs";
-import { ImapFlow } from "imapflow";
 import { commsConfig } from "../config.js";
 import { listMailAccounts, type MailAccount } from "../accounts.js";
 import { getDb } from "../db.js";
-import { ensureFreshAccessToken, imapAuth } from "../oauth.js";
+import { ensureFreshAccessToken } from "../oauth.js";
+import { createImapClient } from "../mail/imap.js";
 import { uniqueMatchingDest, type FolderRule } from "./match.js";
 
 export async function loadRules(): Promise<FolderRule[]> {
@@ -86,13 +86,7 @@ async function applyForAccount(
   if (!byDest.size) return { moved: 0, skippedConflict };
 
   const acc = await ensureFreshAccessToken(account);
-  const client = new ImapFlow({
-    host: acc.imap.host,
-    port: acc.imap.port,
-    secure: acc.imap.tls,
-    auth: imapAuth(acc),
-    logger: false,
-  });
+  const client = createImapClient(acc);
   let moved = 0;
   try {
     await client.connect();

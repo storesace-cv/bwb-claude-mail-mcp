@@ -3,17 +3,36 @@ import type { MailAccount } from "../accounts.js";
 import { ensureFreshAccessToken, imapAuth } from "../oauth.js";
 import { inferFolderLayout, type FolderLayout } from "./folders.js";
 
-export async function openImap(account: MailAccount): Promise<ImapFlow> {
-  const acc = await ensureFreshAccessToken(account);
+/** ImapFlow crashes the whole process if `error` has no listener (socket timeout). */
+export function createImapClient(account: MailAccount): ImapFlow {
   const client = new ImapFlow({
-    host: acc.imap.host,
-    port: acc.imap.port,
-    secure: acc.imap.tls,
-    auth: imapAuth(acc),
+    host: account.imap.host,
+    port: account.imap.port,
+    secure: account.imap.tls,
+    auth: imapAuth(account),
     logger: false,
     connectionTimeout: 25_000,
     greetingTimeout: 25_000,
+    socketTimeout: 15 * 60_000,
   });
+  client.on("error", (err: Error) => {
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        msg: "imap connection error",
+        account: account.id,
+        error: err.message,
+        code: (err as Error & { code?: string }).code,
+      })
+    );
+  });
+  return client;
+}
+
+export async function openImap(account: MailAccount): Promise<ImapFlow> {
+  const acc = await ensureFreshAccessToken(account);
+  const client = createImapClient(acc);
   await client.connect();
   return client;
 }

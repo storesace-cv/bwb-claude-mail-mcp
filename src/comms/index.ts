@@ -58,6 +58,20 @@ async function main(): Promise<void> {
       })
     );
   });
+  process.on("uncaughtException", (err) => {
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        msg: "uncaughtException",
+        error: err.stack ?? err.message,
+        code: (err as Error & { code?: string }).code,
+      })
+    );
+    const code = (err as Error & { code?: string }).code;
+    if (code === "ETIMEOUT" || /socket timeout/i.test(err.message)) return;
+    process.exit(1);
+  });
 
   app.listen(commsConfig.port, commsConfig.host, () => {
     console.log(

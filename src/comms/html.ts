@@ -8,13 +8,18 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export function layout(title: string, body: string, opts?: { flash?: string; error?: string; wrapClass?: string }): string {
+export function layout(
+  title: string,
+  body: string,
+  opts?: { flash?: string; error?: string; wrapClass?: string; extraHead?: string }
+): string {
   return `<!DOCTYPE html>
 <html lang="pt">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${esc(title)} · BWB Comms</title>
+  ${opts?.extraHead ?? ""}
   <style>
     :root {
       --bg: #f5f5f7; --surface: #fff; --text: #1d1d1f; --muted: #86868b;

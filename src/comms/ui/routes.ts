@@ -11,6 +11,7 @@ import {
   runWeekdayNow,
   type JobResult,
 } from "../jobs/run.js";
+import { getManualJob, startManualJob } from "../jobs/manual.js";
 import { buildChatGptPack } from "../pack.js";
 import { loadRules, saveRules } from "../rules/apply.js";
 import {
@@ -837,40 +838,74 @@ adminRouter.get("/jobs", async (_req, res) => {
   res.type("html").send(layout("Jobs", body));
 });
 
-adminRouter.post("/jobs/mail", async (req, res) => {
+adminRouter.post("/jobs/mail", (req, res) => {
   if (!checkCsrf(req)) {
     res.status(403).send("CSRF");
     return;
   }
-  const results = await runMailPipeline();
-  res.type("html").send(layout("Resultado", jobRunPage("Sincronizar correio", results)));
+  const id = startManualJob("Sincronizar correio", runMailPipeline);
+  res.redirect(303, `/admin/jobs/run/${id}`);
 });
 
-adminRouter.post("/jobs/wa", async (req, res) => {
+adminRouter.post("/jobs/wa", (req, res) => {
   if (!checkCsrf(req)) {
     res.status(403).send("CSRF");
     return;
   }
-  const result = await runWaPipeline();
-  res.type("html").send(layout("Resultado", jobRunPage("Sincronizar WhatsApp", result)));
+  const id = startManualJob("Sincronizar WhatsApp", runWaPipeline);
+  res.redirect(303, `/admin/jobs/run/${id}`);
 });
 
-adminRouter.post("/jobs/triage", async (req, res) => {
+adminRouter.post("/jobs/triage", (req, res) => {
   if (!checkCsrf(req)) {
     res.status(403).send("CSRF");
     return;
   }
-  const result = await runWeekdayNow();
-  res.type("html").send(layout("Resultado", jobRunPage("Organizar INBOX", result)));
+  const id = startManualJob("Organizar INBOX", runWeekdayNow);
+  res.redirect(303, `/admin/jobs/run/${id}`);
 });
 
-adminRouter.post("/jobs/agt", async (req, res) => {
+adminRouter.post("/jobs/agt", (req, res) => {
   if (!checkCsrf(req)) {
     res.status(403).send("CSRF");
     return;
   }
-  const result = await runAgtNow();
-  res.type("html").send(layout("Resultado", jobRunPage("Base de conhecimento", result)));
+  const id = startManualJob("Base de conhecimento", runAgtNow);
+  res.redirect(303, `/admin/jobs/run/${id}`);
+});
+
+adminRouter.get("/jobs/run/:id", (req, res) => {
+  const job = getManualJob(String(req.params.id));
+  if (!job) {
+    res.status(404).type("html").send(layout("Jobs", `${header("jobs")}<div class="panel"><p>Esta corrida já não está na memória (o serviço reiniciou). <a href="/admin/jobs">Voltar aos jobs</a></p></div>`));
+    return;
+  }
+  if (job.status === "running") {
+    const elapsed = Math.max(1, Math.round((Date.now() - job.startedAt) / 1000));
+    res.type("html").send(
+      layout(
+        "A correr",
+        `${header("jobs")}
+        <div class="panel">
+          <h2>${esc(job.title)}</h2>
+          <p>A trabalhar nas caixas de correio. Pode demorar uns minutos — esta página actualiza sozinha.</p>
+          <p class="muted">À espera há ${elapsed} s.</p>
+        </div>`,
+        { extraHead: '<meta http-equiv="refresh" content="2">' }
+      )
+    );
+    return;
+  }
+  if (job.status === "error") {
+    res.type("html").send(
+      layout(
+        "Resultado",
+        jobRunPage(job.title, { name: job.title, ok: false, detail: job.error || "Falhou." })
+      )
+    );
+    return;
+  }
+  res.type("html").send(layout("Resultado", jobRunPage(job.title, job.results ?? [])));
 });
 
 adminRouter.get("/pack.md", (_req, res) => {

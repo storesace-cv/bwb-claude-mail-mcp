@@ -6,9 +6,9 @@ import { listMailAccounts, myAddresses, type MailAccount } from "../accounts.js"
 import { commsConfig } from "../config.js";
 import { getDb, getCursor, setCursor } from "../db.js";
 import { replaceMailFolders } from "../rules/store.js";
-import { listMailboxPaths } from "./imap.js";
+import { listMailboxPaths, createImapClient } from "./imap.js";
 import { extractPdfText, isInvoiceCandidate } from "./invoices.js";
-import { imapAuth, ensureFreshAccessToken } from "../oauth.js";
+import { ensureFreshAccessToken } from "../oauth.js";
 import {
   computeUnanswered,
   isFromMe,
@@ -63,15 +63,7 @@ function mailboxUidValidity(client: ImapFlow): number {
 
 async function openClient(account: MailAccount): Promise<ImapFlow> {
   const acc = await ensureFreshAccessToken(account);
-  const client = new ImapFlow({
-    host: acc.imap.host,
-    port: acc.imap.port,
-    secure: acc.imap.tls,
-    auth: imapAuth(acc),
-    logger: false,
-    connectionTimeout: 25_000,
-    greetingTimeout: 25_000,
-  });
+  const client = createImapClient(acc);
   await client.connect();
   return client;
 }
