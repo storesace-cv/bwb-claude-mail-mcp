@@ -206,6 +206,55 @@ export function listWaWatches(): WaWatch[] {
   }));
 }
 
+export function getWaWatch(id: number): WaWatch | undefined {
+  return listWaWatches().find((w) => w.id === id);
+}
+
+export function insertWaWatch(w: {
+  accountId: string;
+  chatJid: string;
+  label: string;
+  keywords: string;
+  kbEnabled: boolean;
+  enabled: boolean;
+}): number {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO wa_watches (account_id, chat_jid, label, keywords, kb_enabled, enabled)
+       VALUES (?,?,?,?,?,?)`
+    )
+    .run(
+      w.accountId,
+      w.chatJid,
+      w.label,
+      w.keywords,
+      w.kbEnabled ? 1 : 0,
+      w.enabled ? 1 : 0
+    );
+  return Number(info.lastInsertRowid);
+}
+
+export function updateWaWatch(w: WaWatch): void {
+  getDb()
+    .prepare(
+      `UPDATE wa_watches SET account_id=?, chat_jid=?, label=?, keywords=?, kb_enabled=?, enabled=?
+       WHERE id=?`
+    )
+    .run(
+      w.accountId,
+      w.chatJid,
+      w.label,
+      w.keywords,
+      w.kbEnabled ? 1 : 0,
+      w.enabled ? 1 : 0,
+      w.id
+    );
+}
+
+export function setWaWatchEnabled(id: number, enabled: boolean): void {
+  getDb().prepare("UPDATE wa_watches SET enabled = ? WHERE id = ?").run(enabled ? 1 : 0, id);
+}
+
 export function upsertWaWatch(w: {
   accountId: string;
   chatJid: string;
