@@ -9,33 +9,35 @@ import { startSchedulers } from "./jobs/run.js";
 import { handleMcp } from "./mcp.js";
 import { adminRouter } from "./ui/routes.js";
 
+async function migrateAttachmentsInBackground(): Promise<void> {
+  if (mailAttachmentGateError()) return;
+  try {
+    const inv = await migrateLocalInvoicesToS3();
+    const wa = await migrateLocalWhatsappAgtToS3();
+    console.log(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "info",
+        msg: "s3 attachment migrate",
+        invoicesMoved: inv.moved,
+        invoicesSkipped: inv.skipped,
+        waMoved: wa.moved,
+      })
+    );
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        msg: "s3 attachment migrate failed",
+        error: err instanceof Error ? err.message : String(err),
+      })
+    );
+  }
+}
+
 async function main(): Promise<void> {
   getDb();
-  if (!mailAttachmentGateError()) {
-    try {
-      const inv = await migrateLocalInvoicesToS3();
-      const wa = await migrateLocalWhatsappAgtToS3();
-      console.log(
-        JSON.stringify({
-          ts: new Date().toISOString(),
-          level: "info",
-          msg: "s3 attachment migrate",
-          invoicesMoved: inv.moved,
-          invoicesSkipped: inv.skipped,
-          waMoved: wa.moved,
-        })
-      );
-    } catch (err) {
-      console.error(
-        JSON.stringify({
-          ts: new Date().toISOString(),
-          level: "error",
-          msg: "s3 attachment migrate failed",
-          error: err instanceof Error ? err.message : String(err),
-        })
-      );
-    }
-  }
   await ensureAdminBootstrap({
     name: process.env.BOOTSTRAP_ADMIN_NAME ?? "Jorge Peixinho",
     email: process.env.BOOTSTRAP_ADMIN_EMAIL ?? "jorge.peixinho@bwb.pt",
@@ -112,6 +114,7 @@ async function main(): Promise<void> {
       })
     );
     startSchedulers();
+    void migrateAttachmentsInBackground();
   });
 }
 

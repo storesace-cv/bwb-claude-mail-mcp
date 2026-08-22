@@ -24,6 +24,10 @@ function s3(): S3Client {
       accessKeyId: commsConfig.s3.accessKey,
       secretAccessKey: commsConfig.s3.secretKey,
     },
+    requestHandler: {
+      requestTimeout: 25_000,
+      connectionTimeout: 10_000,
+    },
   });
   return client;
 }
