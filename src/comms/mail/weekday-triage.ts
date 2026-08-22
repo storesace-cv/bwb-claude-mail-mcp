@@ -6,6 +6,7 @@ import { fileHelpdeskMail } from "./helpdesk-file.js";
 import { listEnvelopes, loadLayout, openImap, searchUids } from "./imap.js";
 import { fileAndPurgePromo } from "./newsletter-purge.js";
 import { sendCommsMail } from "./send.js";
+import { jobError, jobLog, jobProgress, jobStep } from "../jobs/progress.js";
 
 const CURSOR = "schedule:triage";
 
@@ -28,12 +29,18 @@ export async function runWeekdayInboxTriageIfDue(): Promise<{ ran: boolean; deta
 
 export async function runWeekdayInboxTriage(opts?: { notify?: boolean }): Promise<string> {
   const accounts = await listMailAccounts();
+  jobLog(`${accounts.length} contas na organização da INBOX.`);
   const sections: string[] = [
     `Triage INBOX — ${lisbonParts().dateKey} (Europe/Lisbon)`,
     "Sem rascunhos automáticos. Não lidos ficam no relatório.",
     "",
   ];
-  for (const account of accounts) {
+  for (let i = 0; i < accounts.length; i++) {
+    const account = accounts[i];
+    const base = Math.round((i / Math.max(accounts.length, 1)) * 90);
+    jobProgress(base);
+    jobStep("unread", "Listar não lidos");
+    jobLog(`INBOX ${account.label} (${i + 1}/${accounts.length})…`);
     sections.push(`## ${account.label} (${account.mail.defaultFrom})`);
     try {
       const client = await openImap(account);
@@ -41,6 +48,7 @@ export async function runWeekdayInboxTriage(opts?: { notify?: boolean }): Promis
         await loadLayout(client);
         const unreadUids = await searchUids(client, "INBOX", { seen: false });
         const unread = await listEnvelopes(client, "INBOX", unreadUids.slice(0, 100));
+        jobLog(`${account.label}: ${unread.length} não lidos.`);
         if (!unread.length) {
           sections.push("Part A: sem não lidos.");
         } else {
@@ -51,6 +59,8 @@ export async function runWeekdayInboxTriage(opts?: { notify?: boolean }): Promis
         }
         const helpdeskOn = listMailRules(true).some((r) => r.kind === "helpdesk");
         if (helpdeskOn) {
+          jobStep("helpdesk", "Arquivar helpdesk");
+          jobLog(`${account.label}: a arquivar helpdesk…`);
           const hd = await fileHelpdeskMail(client, account);
           sections.push("Helpdesk organizado:");
           const entries = Object.entries(hd.byFolder);
@@ -61,7 +71,10 @@ export async function runWeekdayInboxTriage(opts?: { notify?: boolean }): Promis
           if (hd.unclassified) {
             sections.push(`- _sem-cliente: ${hd.unclassified} (rever)`);
           }
+          jobLog(`${account.label}: helpdesk ${entries.reduce((a, [, n]) => a + n, 0)} mensagens.`);
         }
+        jobStep("promo", "Newsletters e marketing");
+        jobLog(`${account.label}: newsletters e marketing…`);
         const promo = await fileAndPurgePromo(client, account.id);
         sections.push("Newsletters & Marketing:");
         const filed = Object.entries(promo.filed);
@@ -78,7 +91,9 @@ export async function runWeekdayInboxTriage(opts?: { notify?: boolean }): Promis
         await client.logout().catch(() => undefined);
       }
     } catch (err) {
-      sections.push(`Erro de acesso: ${err instanceof Error ? err.message : String(err)}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      jobError(`${account.label}: ${msg}`);
+      sections.push(`Erro de acesso: ${msg}`);
     }
     sections.push("");
   }

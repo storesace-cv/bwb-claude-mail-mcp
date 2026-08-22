@@ -115,9 +115,10 @@ export function layout(
     }
     .bwb-wait-backdrop.open { display: flex; }
     .bwb-wait-dialog {
-      max-width: 26rem; width: 100%; text-align: center;
+      max-width: 34rem; width: 100%; text-align: center;
       background: var(--surface); border: 1px solid var(--border-soft);
       border-radius: 16px; padding: 1.5rem 1.35rem 1.25rem; box-shadow: 0 20px 50px rgba(0,0,0,.14);
+      max-height: min(92vh, 44rem); overflow: auto;
     }
     .bwb-wait-title { margin: 0 0 .4rem; font-size: 1.1rem; font-weight: 650; }
     .bwb-wait-lead { margin: 0 0 1.1rem; font-size: .875rem; color: var(--muted); line-height: 1.45; }
@@ -138,6 +139,21 @@ export function layout(
     .bwb-wait-steps li.active::before { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 3px var(--fill-hover); }
     .bwb-wait-steps li.done { color: var(--muted); }
     .bwb-wait-steps li.done::before { border-color: #16a34a; background: #16a34a; }
+    .bwb-wait-beat { margin: .75rem 0 0; font-size: .75rem; color: var(--muted); text-align: left; }
+    .bwb-wait-term { margin-top: .75rem; text-align: left; }
+    .bwb-wait-term-head {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: .7rem; font-weight: 650; color: var(--muted); margin-bottom: .3rem; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .bwb-wait-term-head button {
+      font-size: .7rem; padding: .2rem .55rem; border-radius: 6px; background: var(--fill-hover); color: var(--text);
+    }
+    .bwb-wait-term pre {
+      margin: 0; max-height: 7.5rem; overflow: auto; font-family: var(--mono); font-size: .7rem; line-height: 1.45;
+      background: #1d1d1f; color: #e8e8ed; border-radius: 8px; padding: .55rem .7rem; white-space: pre-wrap; word-break: break-word;
+    }
+    .bwb-wait-term-err pre { background: #3b1111; color: #ffd4d0; min-height: 2.4rem; }
+    .bwb-wait-actions { margin: .9rem 0 0; }
   </style>
 </head>
 <body${opts?.waitJob ? ` data-wait-id="${esc(opts.waitJob.id)}" data-wait-kind="${esc(opts.waitJob.kind)}" data-wait-title="${esc(opts.waitJob.title)}"` : ""}>
@@ -160,6 +176,18 @@ export function layout(
         </div>
       </div>
       <ul class="bwb-wait-steps bwb-wait-steps--hidden" id="bwb-wait-steps" hidden></ul>
+      <p class="bwb-wait-beat" id="bwb-wait-beat">A aguardar o primeiro sinal do servidor…</p>
+      <div class="bwb-wait-term">
+        <div class="bwb-wait-term-head">Actividade <button type="button" id="bwb-wait-copy-log">Copiar</button></div>
+        <pre id="bwb-wait-log">A iniciar…</pre>
+      </div>
+      <div class="bwb-wait-term bwb-wait-term-err">
+        <div class="bwb-wait-term-head">Erros <button type="button" id="bwb-wait-copy-err">Copiar</button></div>
+        <pre id="bwb-wait-err">Sem erros até agora.</pre>
+      </div>
+      <p class="bwb-wait-actions" id="bwb-wait-actions" hidden>
+        <a class="btn" id="bwb-wait-done" href="#">Ver resultado</a>
+      </p>
     </div>
   </div>
   <script>${tableSortScript}</script>

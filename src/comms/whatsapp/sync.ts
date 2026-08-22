@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { commsConfig } from "../config.js";
 import { ingestWhatsappDb } from "./store.js";
+import { jobError, jobLog, jobProgress } from "../jobs/progress.js";
 
 export interface WaAccount {
   id: string;
@@ -46,25 +47,35 @@ export async function listWaAccounts(): Promise<WaAccount[]> {
 
 export async function syncAllWhatsapp(): Promise<{ accounts: number; inserted: number }> {
   const accounts = await listWaAccounts();
+  jobLog(`${accounts.length} contas WhatsApp.`);
   let inserted = 0;
-  for (const account of accounts) {
+  for (let i = 0; i < accounts.length; i++) {
+    const account = accounts[i];
+    jobProgress(Math.round(((i + 1) / Math.max(accounts.length, 1)) * 90));
     const dbPath = path.join(account.storeDir, "messages.db");
     try {
       await fs.access(dbPath);
     } catch {
+      jobLog(`${account.label}: sem messages.db, a saltar.`);
       continue;
     }
-    const r = ingestWhatsappDb(account.id, dbPath);
-    inserted += r.inserted;
-    console.log(
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        level: "info",
-        msg: "wa sync",
-        account: account.id,
-        inserted: r.inserted,
-      })
-    );
+    jobLog(`A ler ${account.label}…`);
+    try {
+      const r = ingestWhatsappDb(account.id, dbPath);
+      inserted += r.inserted;
+      jobLog(`${account.label}: ${r.inserted} novas.`);
+      console.log(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "info",
+          msg: "wa sync",
+          account: account.id,
+          inserted: r.inserted,
+        })
+      );
+    } catch (err) {
+      jobError(`${account.label}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   return { accounts: accounts.length, inserted };
 }

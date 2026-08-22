@@ -5,6 +5,7 @@ import { getDb } from "../db.js";
 import { ensureFreshAccessToken } from "../oauth.js";
 import { createImapClient } from "../mail/imap.js";
 import { uniqueMatchingDest, type FolderRule } from "./match.js";
+import { jobError, jobLog, jobProgress } from "../jobs/progress.js";
 
 export async function loadRules(): Promise<FolderRule[]> {
   try {
@@ -25,14 +26,25 @@ export async function saveRules(rules: FolderRule[]): Promise<void> {
 
 export async function applyFolderRules(): Promise<{ moved: number; skippedConflict: number }> {
   const rules = await loadRules();
-  if (!rules.length) return { moved: 0, skippedConflict: 0 };
+  if (!rules.length) {
+    jobLog("Sem regras JSON de pastas para aplicar.");
+    return { moved: 0, skippedConflict: 0 };
+  }
   const accounts = await listMailAccounts();
   let moved = 0;
   let skippedConflict = 0;
-  for (const account of accounts) {
-    const r = await applyForAccount(account, rules);
-    moved += r.moved;
-    skippedConflict += r.skippedConflict;
+  for (let i = 0; i < accounts.length; i++) {
+    const account = accounts[i];
+    jobLog(`Regras em ${account.label} (${i + 1}/${accounts.length})…`);
+    jobProgress(72 + Math.round(((i + 1) / Math.max(accounts.length, 1)) * 24));
+    try {
+      const r = await applyForAccount(account, rules);
+      moved += r.moved;
+      skippedConflict += r.skippedConflict;
+      jobLog(`${account.label}: ${r.moved} movidas.`);
+    } catch (err) {
+      jobError(`${account.label}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   return { moved, skippedConflict };
 }

@@ -9,6 +9,7 @@ import { replaceMailFolders } from "../rules/store.js";
 import { listMailboxPaths, createImapClient } from "./imap.js";
 import { extractPdfText, isInvoiceCandidate } from "./invoices.js";
 import { ensureFreshAccessToken } from "../oauth.js";
+import { jobError, jobLog, jobProgress } from "../jobs/progress.js";
 import {
   computeUnanswered,
   isFromMe,
@@ -116,11 +117,13 @@ async function syncFolder(
   try {
     lock = await client.getMailboxLock(folder);
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     log("warn", "mailbox open failed", {
       account: account.id,
       folder,
-      error: err instanceof Error ? err.message : String(err),
+      error: msg,
     });
+    jobError(`${account.label} · ${folder}: não abriu (${msg})`);
     return 0;
   }
   try {
@@ -134,6 +137,7 @@ async function syncFolder(
     setCursor(validKey, String(uidvalidity));
     const lastUid = Number(getCursor(cursorKey) ?? "0");
     const range = lastUid > 0 ? `${lastUid + 1}:*` : "1:*";
+    jobLog(`${account.label} · ${folder}: a pedir UID ${range}`);
     let maxUid = lastUid;
     let count = 0;
     const mine = myAddresses(account);
@@ -193,6 +197,9 @@ async function syncFolder(
       );
       const pk = Number(info.lastInsertRowid);
       count += 1;
+      if (count === 1 || count % 100 === 0) {
+        jobLog(`${account.label} · ${folder}: ${count} mensagens lidas…`);
+      }
 
       const parts = walkStructure(msg.bodyStructure as StructureNode | undefined);
       for (const part of parts) {
@@ -276,18 +283,23 @@ export function recomputeThreads(accountId: string): void {
 
 export async function syncAllMail(): Promise<{ accounts: number; fetched: number }> {
   const accounts = await listMailAccounts();
+  jobLog(`${accounts.length} contas de correio.`);
   let fetched = 0;
-  for (const account of accounts) {
+  for (let i = 0; i < accounts.length; i++) {
+    const account = accounts[i];
+    jobProgress(Math.round((i / Math.max(accounts.length, 1)) * 70));
+    jobLog(`A ler ${account.label} (${i + 1}/${accounts.length})…`);
     try {
       const r = await syncMailAccount(account);
       fetched += r.fetched;
+      jobLog(`${account.label}: ${r.fetched} mensagens novas.`);
       log("info", "mail sync ok", { account: account.id, fetched: r.fetched });
     } catch (err) {
-      log("error", "mail sync failed", {
-        account: account.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      const msg = err instanceof Error ? err.message : String(err);
+      jobError(`${account.label}: ${msg}`);
+      log("error", "mail sync failed", { account: account.id, error: msg });
     }
+    jobProgress(Math.round(((i + 1) / Math.max(accounts.length, 1)) * 70));
   }
   return { accounts: accounts.length, fetched };
 }

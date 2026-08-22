@@ -905,6 +905,13 @@ adminRouter.get("/jobs/run/:id/status", (req, res) => {
     title: job.title,
     status: job.status,
     error: job.error ?? null,
+    step: job.trace.step,
+    stepLabel: job.trace.stepLabel,
+    pct: job.trace.pct,
+    logs: job.trace.logs,
+    errors: job.trace.errors,
+    lastEventAt: job.trace.lastEventAt,
+    elapsedMs: Date.now() - job.startedAt,
   });
 });
 

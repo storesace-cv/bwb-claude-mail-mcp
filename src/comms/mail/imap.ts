@@ -2,6 +2,7 @@ import { ImapFlow } from "imapflow";
 import type { MailAccount } from "../accounts.js";
 import { ensureFreshAccessToken, imapAuth } from "../oauth.js";
 import { inferFolderLayout, type FolderLayout } from "./folders.js";
+import { jobError } from "../jobs/progress.js";
 
 /** ImapFlow crashes the whole process if `error` has no listener (socket timeout). */
 export function createImapClient(account: MailAccount): ImapFlow {
@@ -26,6 +27,7 @@ export function createImapClient(account: MailAccount): ImapFlow {
         code: (err as Error & { code?: string }).code,
       })
     );
+    jobError(`${account.label}: IMAP ${err.message}`);
   });
   return client;
 }

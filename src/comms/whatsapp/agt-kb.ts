@@ -9,6 +9,7 @@ import { lisbonParts, shouldFireDaily } from "../time/lisbon.js";
 import { matchesKeywords } from "./keywords.js";
 import { upsertAllow } from "./store.js";
 import { listWaAccounts } from "./sync.js";
+import { jobError, jobLog, jobProgress, jobStep } from "../jobs/progress.js";
 
 const CURSOR = "schedule:agt-kb";
 const GROUP_NAME = "AGT - IVA ANGOLA";
@@ -39,6 +40,7 @@ export async function runAgtKbIfDue(): Promise<{ ran: boolean; detail: string }>
 export async function runAgtKb(opts?: { notify?: boolean }): Promise<string> {
   const accounts = await listWaAccounts();
   const watches = listWaWatches().filter((w) => w.enabled && w.kbEnabled);
+  jobLog(`${watches.length} vigias com KB ligada.`);
   const lines: string[] = [`KB WhatsApp — ${lisbonParts().dateKey}`, ""];
   let added = 0;
   let mediaCopied = 0;
@@ -51,15 +53,24 @@ export async function runAgtKb(opts?: { notify?: boolean }): Promise<string> {
     return text;
   }
 
+  const chatList = watches.flatMap((w) => w.chats.map((c) => ({ watch: w, target: c })));
+  let chatIndex = 0;
+
   for (const watch of watches) {
     if (!watch.chats.length) {
       lines.push(`${watch.name}: sem conversas`);
+      jobLog(`${watch.name}: sem conversas`);
       continue;
     }
     for (const target of watch.chats) {
+    chatIndex += 1;
+    jobProgress(Math.round((chatIndex / Math.max(chatList.length, 1)) * 90));
+    jobStep("chats", "Percorrer conversas");
+    jobLog(`${watch.name} · ${target.label} (${chatIndex}/${chatList.length})…`);
     const account = accounts.find((a) => a.id === target.accountId);
     if (!account) {
       lines.push(`[${target.accountId}] conta em falta`);
+      jobError(`${target.label}: conta ${target.accountId} em falta`);
       continue;
     }
     const messagesDb = path.join(account.storeDir, "messages.db");
@@ -68,6 +79,7 @@ export async function runAgtKb(opts?: { notify?: boolean }): Promise<string> {
       bridge = new Database(messagesDb, { readonly: true, fileMustExist: true });
     } catch {
       lines.push(`[${target.label}] messages.db inacessível`);
+      jobError(`${target.label}: messages.db inacessível`);
       continue;
     }
     try {
@@ -91,6 +103,7 @@ export async function runAgtKb(opts?: { notify?: boolean }): Promise<string> {
         lines.push(
           `[${account.id}] ${chat.name}: cursor inicializado (sem reimportar histórico)`
         );
+        jobLog(`${chat.name}: primeira leitura, histórico antigo não importado.`);
         continue;
       }
       const lastTs = Number(lastTsRaw);
@@ -169,11 +182,13 @@ export async function runAgtKb(opts?: { notify?: boolean }): Promise<string> {
       }
       kb.metadata.data_geracao = lisbonParts().dateKey;
       kb.metadata.gerado_por = "BWB Comms (ingest automático, respostas EM ABERTO até revisão)";
+      jobStep("kb", "Escrever na base de conhecimento");
       await saveAgtJson(kb);
       setCursor(`agt:last-ts:${account.id}:${chat.jid}`, String(maxTs));
       lines.push(
         `[${account.id}] ${chat.name}: ${rows.length} msgs novas, ${added} entradas relevantes, ${mediaCopied} anexos copiados`
       );
+      jobLog(`${chat.name}: ${rows.length} novas, ${added} relevantes.`);
     } finally {
       bridge.close();
     }
