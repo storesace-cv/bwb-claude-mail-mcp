@@ -14,6 +14,7 @@ import {
   getMailRule,
   getWaWatch,
   insertMailRule,
+  insertWaWatch,
   listCachedFolders,
   listMailRules,
   listSchedules,
@@ -22,7 +23,7 @@ import {
   setWaWatchEnabled,
   updateMailRule,
   updateSchedule,
-  upsertWaWatch,
+  updateWaWatch,
   type MailRule,
   type WaWatch,
 } from "../rules/store.js";
@@ -217,7 +218,7 @@ adminRouter.get("/whatsapp", async (req, res) => {
     })}
     <div class="panel">
       <h2>Nova vigia</h2>
-      <p class="muted">Selecciona um ou vários grupos/contactos. Palavras-chave e KB aplicam-se a todos da mesma forma.</p>
+      <p class="muted">Uma vigia = um nome, palavras-chave e KB, para um conjunto de conversas. Fica uma só linha na tabela.</p>
       ${watchForm({ accounts, chatsByAccount })}
     </div>
     <div class="panel">
@@ -228,9 +229,8 @@ adminRouter.get("/whatsapp", async (req, res) => {
           <th>Editar</th>
           <th>Estado</th>
           <th>Apagar</th>
-          <th>Conta</th>
-          <th>Tipo</th>
-          <th>Conversa</th>
+          <th>Nome</th>
+          <th>Conversas</th>
           <th>Palavras-chave</th>
           <th>KB</th>
           <th>Ligado</th>
@@ -238,18 +238,18 @@ adminRouter.get("/whatsapp", async (req, res) => {
         <tbody>
           ${watches
             .map((w) => {
-              const acc = accounts.find((a) => a.id === w.accountId);
-              const name =
-                chatsByAccount.get(w.accountId)?.find((c) => c.jid === w.chatJid)?.name ||
-                w.label ||
-                w.chatJid;
+              const chatNames = w.chats
+                .map((c) => {
+                  const live = chatsByAccount.get(c.accountId)?.find((x) => x.jid === c.chatJid)?.name;
+                  return live || c.label || c.chatJid;
+                })
+                .join(" · ");
               return `<tr>
                 <td><a class="btn secondary" href="/admin/whatsapp/${w.id}">Editar</a></td>
                 <td><form method="post" action="/admin/whatsapp/${w.id}/toggle"><button class="secondary" type="submit">${w.enabled ? "Desligar" : "Ligar"}</button></form></td>
                 <td><form method="post" action="/admin/whatsapp/${w.id}/delete"><button class="secondary" type="submit">Apagar</button></form></td>
-                <td>${esc(acc?.label ?? w.accountId)}</td>
-                <td>${esc(waChatKind(w.chatJid))}</td>
-                <td>${esc(name)}</td>
+                <td>${esc(w.name)}</td>
+                <td>${esc(chatNames || "—")}</td>
                 <td>${esc(w.keywords || "—")}</td>
                 <td>${w.kbEnabled ? "sim" : "—"}</td>
                 <td>${w.enabled ? "sim" : "não"}</td>
@@ -305,7 +305,7 @@ adminRouter.get("/whatsapp/:id", async (req, res) => {
     })}
     <div class="panel">
       <h2>Editar vigia</h2>
-      <p class="muted">Podes acrescentar conversas: ficam com as mesmas palavras-chave e opções.</p>
+      <p class="muted">Altera o conjunto de conversas desta vigia. Continua a ser uma só linha.</p>
       ${watchForm({ accounts, chatsByAccount, watch, action: `/admin/whatsapp/${watch.id}` })}
       <p><a href="/admin/whatsapp">voltar</a></p>
     </div>`;
@@ -318,8 +318,8 @@ adminRouter.post("/whatsapp", async (req, res) => {
     return;
   }
   try {
-    const parsed = await parseWaWatchBodies(req.body);
-    saveWaWatches(parsed);
+    const parsed = await parseWaWatchForm(req.body);
+    insertWaWatch(parsed);
     syncAllowFromWatches();
     res.redirect("/admin/whatsapp");
   } catch (err) {
@@ -339,10 +339,8 @@ adminRouter.post("/whatsapp/:id", async (req, res) => {
     return;
   }
   try {
-    const parsed = await parseWaWatchBodies(req.body);
-    saveWaWatches(parsed);
-    const still = parsed.some((p) => p.accountId === current.accountId && p.chatJid === current.chatJid);
-    if (!still) deleteWaWatch(id);
+    const parsed = await parseWaWatchForm(req.body);
+    updateWaWatch({ ...parsed, id: current.id });
     syncAllowFromWatches();
     res.redirect("/admin/whatsapp");
   } catch (err) {
@@ -968,42 +966,42 @@ function asStringList(v: unknown): string[] {
   return [];
 }
 
-async function parseWaWatchBodies(body: Record<string, unknown>): Promise<Array<Omit<WaWatch, "id">>> {
-  const values = asStringList(body.conversation);
+async function parseWaWatchForm(body: Record<string, unknown>): Promise<Omit<WaWatch, "id">> {
+  const values = [...new Set(asStringList(body.conversation))];
   if (!values.length) throw new Error("Escolhe pelo menos uma conversa");
   const chatsByAccount = await listWaChatsByAccount();
   const flag = (k: string) => String(body[k] ?? "") === "on" || String(body[k] ?? "") === "1";
-  const keywords = String(body.keywords ?? "").trim();
-  const kbEnabled = flag("kb_enabled");
-  const enabled = flag("enabled");
-  return values.map((value) => {
+  const chats = values.map((value) => {
     const { accountId, chatJid } = decodeWatchChat(value);
     const chat = chatsByAccount.get(accountId)?.find((c) => c.jid === chatJid);
     return {
       accountId,
       chatJid,
       label: chat?.name || chatJid,
-      keywords,
-      kbEnabled,
-      enabled,
     };
   });
-}
-
-function saveWaWatches(rows: Array<Omit<WaWatch, "id">>): void {
-  for (const row of rows) upsertWaWatch(row);
+  const name = String(body.name ?? "").trim() || chats[0]?.label || "Vigia";
+  return {
+    name,
+    keywords: String(body.keywords ?? "").trim(),
+    kbEnabled: flag("kb_enabled"),
+    enabled: flag("enabled"),
+    chats,
+  };
 }
 
 function syncAllowFromWatches(): void {
   getDb().prepare("DELETE FROM wa_allowlist").run();
   for (const w of listWaWatches().filter((w) => w.enabled)) {
-    upsertAllow(w.accountId, w.chatJid, w.label);
+    for (const c of w.chats) upsertAllow(c.accountId, c.chatJid, c.label);
   }
 }
 
 function waWatchError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
-  if (/UNIQUE|constraint/i.test(msg)) return "Essa conversa já tem vigia. Edita a linha existente.";
+  if (/UNIQUE|constraint/i.test(msg)) {
+    return "Uma das conversas já está noutra vigia. Tira-a da outra linha primeiro.";
+  }
   return msg;
 }
 
@@ -1015,12 +1013,15 @@ function watchForm(opts: {
 }): string {
   const w = opts.watch;
   const action = opts.action ?? "/admin/whatsapp";
-  const selected = new Set(w ? [encodeWatchChat(w.accountId, w.chatJid)] : []);
+  const selected = new Set((w?.chats ?? []).map((c) => encodeWatchChat(c.accountId, c.chatJid)));
   const groups = opts.accounts
     .map((a, accIdx) => {
       const chats = [...(opts.chatsByAccount.get(a.id) ?? [])];
-      if (w && w.accountId === a.id && !chats.some((c) => c.jid === w.chatJid)) {
-        chats.unshift({ jid: w.chatJid, name: w.label || w.chatJid });
+      for (const saved of w?.chats ?? []) {
+        if (saved.accountId !== a.id) continue;
+        if (!chats.some((c) => c.jid === saved.chatJid)) {
+          chats.unshift({ jid: saved.chatJid, name: saved.label || saved.chatJid });
+        }
       }
       const fid = `wa-acc-${accIdx}`;
       if (!chats.length) {
@@ -1041,8 +1042,9 @@ function watchForm(opts: {
     })
     .join("");
   return `<form method="post" action="${esc(action)}" class="stack">
+    <label>Nome <input name="name" required value="${esc(w?.name ?? "")}" placeholder="AGT — IVA Angola"></label>
     <label>Conversas
-      <span class="muted" style="font-weight:400">Multi-selecção: a mesma configuração aplica-se a todos os escolhidos.</span>
+      <span class="muted" style="font-weight:400">Marca todas as conversas desta vigia. Não cria linhas extra.</span>
     </label>
     <div class="check-list">${groups}</div>
     <label>Palavras-chave (vírgula)

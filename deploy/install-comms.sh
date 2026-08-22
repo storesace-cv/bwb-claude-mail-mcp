@@ -28,6 +28,10 @@ if [[ -f "$MAIL_STATE/accounts.json" ]]; then
   chmod 660 "$MAIL_STATE/accounts.json" || true
   chgrp mailmcp "$MAIL_STATE/accounts.json" || true
 fi
+if [[ -d "$WA_STATE" ]]; then
+  chmod 750 "$WA_STATE" || true
+  chgrp whatsappmcp "$WA_STATE" || true
+fi
 if [[ -d "$WA_STATE/accounts" ]]; then
   chmod 750 "$WA_STATE/accounts" "$WA_STATE/accounts/a" "$WA_STATE/accounts/b" \
     "$WA_STATE/accounts/a/store" "$WA_STATE/accounts/b/store" 2>/dev/null || true

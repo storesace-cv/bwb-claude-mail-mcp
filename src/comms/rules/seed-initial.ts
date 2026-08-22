@@ -1,5 +1,5 @@
 import { getDb } from "../db.js";
-import { insertMailRule, type MailRule } from "./store.js";
+import { insertMailRule, insertWaWatch, type MailRule } from "./store.js";
 import { upsertAllow } from "../whatsapp/store.js";
 
 export type MailRuleInput = Omit<MailRule, "id">;
@@ -393,15 +393,20 @@ export function seedInitialIfEmpty(): void {
 
   const watches = db.prepare("SELECT COUNT(*) AS c FROM wa_watches").get() as { c: number };
   if (watches.c === 0) {
-    db.prepare(
-      `INSERT OR IGNORE INTO wa_watches (account_id, chat_jid, label, keywords, kb_enabled, enabled)
-       VALUES (?,?,?,?,1,1)`
-    ).run(
-      "a",
-      "244928277927-1565965350@g.us",
-      "AGT - IVA ANGOLA",
-      "faturação eletrónica, SAFT-AO, certificação, IVA"
-    );
+    const id = insertWaWatch({
+      name: "AGT - IVA ANGOLA",
+      keywords: "faturação eletrónica, SAFT-AO, certificação, IVA",
+      kbEnabled: true,
+      enabled: true,
+      chats: [
+        {
+          accountId: "a",
+          chatJid: "244928277927-1565965350@g.us",
+          label: "AGT - IVA ANGOLA",
+        },
+      ],
+    });
+    void id;
     upsertAllow("a", "244928277927-1565965350@g.us", "AGT - IVA ANGOLA");
   }
 }

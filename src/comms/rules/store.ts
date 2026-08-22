@@ -20,14 +20,19 @@ export interface MailRule {
   enabled: boolean;
 }
 
-export interface WaWatch {
-  id: number;
+export interface WaWatchChat {
   accountId: string;
   chatJid: string;
   label: string;
+}
+
+export interface WaWatch {
+  id: number;
+  name: string;
   keywords: string;
   kbEnabled: boolean;
   enabled: boolean;
+  chats: WaWatchChat[];
 }
 
 export interface Schedule {
@@ -185,104 +190,85 @@ export function updateSchedule(s: Schedule): void {
 }
 
 export function listWaWatches(): WaWatch[] {
-  return (
-    getDb().prepare("SELECT * FROM wa_watches ORDER BY label").all() as Array<{
+  const watches = (
+    getDb().prepare("SELECT * FROM wa_watches ORDER BY name, id").all() as Array<{
       id: number;
-      account_id: string;
-      chat_jid: string;
-      label: string;
+      name: string;
       keywords: string;
       kb_enabled: number;
       enabled: number;
     }>
   ).map((w) => ({
     id: w.id,
-    accountId: w.account_id,
-    chatJid: w.chat_jid,
-    label: w.label,
+    name: w.name,
     keywords: w.keywords,
     kbEnabled: Boolean(w.kb_enabled),
     enabled: Boolean(w.enabled),
+    chats: [] as WaWatchChat[],
   }));
+  const chats = getDb()
+    .prepare("SELECT watch_id, account_id, chat_jid, label FROM wa_watch_chats ORDER BY label")
+    .all() as Array<{ watch_id: number; account_id: string; chat_jid: string; label: string }>;
+  const byId = new Map(watches.map((w) => [w.id, w]));
+  for (const c of chats) {
+    const w = byId.get(c.watch_id);
+    if (!w) continue;
+    w.chats.push({ accountId: c.account_id, chatJid: c.chat_jid, label: c.label });
+  }
+  return watches;
 }
 
 export function getWaWatch(id: number): WaWatch | undefined {
   return listWaWatches().find((w) => w.id === id);
 }
 
-export function insertWaWatch(w: {
-  accountId: string;
-  chatJid: string;
-  label: string;
-  keywords: string;
-  kbEnabled: boolean;
-  enabled: boolean;
-}): number {
-  const info = getDb()
-    .prepare(
-      `INSERT INTO wa_watches (account_id, chat_jid, label, keywords, kb_enabled, enabled)
-       VALUES (?,?,?,?,?,?)`
-    )
-    .run(
-      w.accountId,
-      w.chatJid,
-      w.label,
-      w.keywords,
-      w.kbEnabled ? 1 : 0,
-      w.enabled ? 1 : 0
-    );
-  return Number(info.lastInsertRowid);
+export function insertWaWatch(w: Omit<WaWatch, "id">): number {
+  const db = getDb();
+  return db.transaction(() => {
+    const info = db
+      .prepare(`INSERT INTO wa_watches (name, keywords, kb_enabled, enabled) VALUES (?,?,?,?)`)
+      .run(w.name, w.keywords, w.kbEnabled ? 1 : 0, w.enabled ? 1 : 0);
+    const id = Number(info.lastInsertRowid);
+    replaceWatchChats(id, w.chats);
+    return id;
+  })();
 }
 
 export function updateWaWatch(w: WaWatch): void {
-  getDb()
-    .prepare(
-      `UPDATE wa_watches SET account_id=?, chat_jid=?, label=?, keywords=?, kb_enabled=?, enabled=?
-       WHERE id=?`
-    )
-    .run(
-      w.accountId,
-      w.chatJid,
-      w.label,
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare(`UPDATE wa_watches SET name=?, keywords=?, kb_enabled=?, enabled=? WHERE id=?`).run(
+      w.name,
       w.keywords,
       w.kbEnabled ? 1 : 0,
       w.enabled ? 1 : 0,
       w.id
     );
+    replaceWatchChats(w.id, w.chats);
+  })();
 }
 
 export function setWaWatchEnabled(id: number, enabled: boolean): void {
   getDb().prepare("UPDATE wa_watches SET enabled = ? WHERE id = ?").run(enabled ? 1 : 0, id);
 }
 
-export function upsertWaWatch(w: {
-  accountId: string;
-  chatJid: string;
-  label: string;
-  keywords: string;
-  kbEnabled: boolean;
-  enabled: boolean;
-}): void {
-  getDb()
-    .prepare(
-      `INSERT INTO wa_watches (account_id, chat_jid, label, keywords, kb_enabled, enabled)
-       VALUES (?,?,?,?,?,?)
-       ON CONFLICT(account_id, chat_jid) DO UPDATE SET
-         label=excluded.label, keywords=excluded.keywords,
-         kb_enabled=excluded.kb_enabled, enabled=excluded.enabled`
-    )
-    .run(
-      w.accountId,
-      w.chatJid,
-      w.label,
-      w.keywords,
-      w.kbEnabled ? 1 : 0,
-      w.enabled ? 1 : 0
-    );
+export function deleteWaWatch(id: number): void {
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare("DELETE FROM wa_watch_chats WHERE watch_id = ?").run(id);
+    db.prepare("DELETE FROM wa_watches WHERE id = ?").run(id);
+  })();
 }
 
-export function deleteWaWatch(id: number): void {
-  getDb().prepare("DELETE FROM wa_watches WHERE id = ?").run(id);
+function replaceWatchChats(watchId: number, chats: WaWatchChat[]): void {
+  const db = getDb();
+  db.prepare("DELETE FROM wa_watch_chats WHERE watch_id = ?").run(watchId);
+  const ins = db.prepare(
+    `INSERT INTO wa_watch_chats (watch_id, account_id, chat_jid, label) VALUES (?,?,?,?)`
+  );
+  for (const c of chats) {
+    ins.run(watchId, c.accountId, c.chatJid, c.label);
+  }
 }
 
 export function replaceMailFolders(accountId: string, paths: string[]): void {

@@ -50,9 +50,14 @@ export async function runAgtKb(): Promise<string> {
   }
 
   for (const watch of watches) {
-    const account = accounts.find((a) => a.id === watch.accountId);
+    if (!watch.chats.length) {
+      lines.push(`${watch.name}: sem conversas`);
+      continue;
+    }
+    for (const target of watch.chats) {
+    const account = accounts.find((a) => a.id === target.accountId);
     if (!account) {
-      lines.push(`[${watch.accountId}] conta em falta`);
+      lines.push(`[${target.accountId}] conta em falta`);
       continue;
     }
     const messagesDb = path.join(account.storeDir, "messages.db");
@@ -60,7 +65,7 @@ export async function runAgtKb(): Promise<string> {
     try {
       bridge = new Database(messagesDb, { readonly: true, fileMustExist: true });
     } catch {
-      lines.push(`[${watch.label}] messages.db inacessível`);
+      lines.push(`[${target.label}] messages.db inacessível`);
       continue;
     }
     try {
@@ -68,12 +73,12 @@ export async function runAgtKb(): Promise<string> {
         .prepare(
           `SELECT jid, name FROM chats WHERE jid = ? OR lower(name) = lower(?) LIMIT 1`
         )
-        .get(watch.chatJid, watch.label) as { jid: string; name: string } | undefined;
+        .get(target.chatJid, target.label) as { jid: string; name: string } | undefined;
       if (!chat) {
-        lines.push(`[${account.id}] ${watch.label} não encontrado`);
+        lines.push(`[${account.id}] ${target.label} não encontrado`);
         continue;
       }
-      upsertAllow(account.id, chat.jid, chat.name || watch.label);
+      upsertAllow(account.id, chat.jid, chat.name || target.label);
       const cursorKey = `agt:last-ts:${account.id}:${chat.jid}`;
       const lastTsRaw = getCursor(cursorKey);
       if (lastTsRaw === null) {
@@ -169,6 +174,7 @@ export async function runAgtKb(): Promise<string> {
       );
     } finally {
       bridge.close();
+    }
     }
   }
 

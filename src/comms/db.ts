@@ -148,6 +148,7 @@ function migrate(database: Database.Database): void {
       PRIMARY KEY (account_id, path)
     );
   `);
+  migrateWaWatchGroups(database);
 }
 
 export function getCursor(key: string): string | null {
@@ -169,4 +170,88 @@ export function setCursor(key: string, value: string): void {
 export function closeDb(): void {
   db?.close();
   db = null;
+}
+
+function tableColumns(database: Database.Database, table: string): Set<string> {
+  return new Set(
+    (database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name)
+  );
+}
+
+/** One vigia, many chats. Merges rows that shared keywords/KB/enabled. */
+function migrateWaWatchGroups(database: Database.Database): void {
+  const cols = tableColumns(database, "wa_watches");
+  if (!cols.has("chat_jid")) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS wa_watch_chats (
+        watch_id INTEGER NOT NULL,
+        account_id TEXT NOT NULL,
+        chat_jid TEXT NOT NULL,
+        label TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (account_id, chat_jid)
+      );
+    `);
+    return;
+  }
+
+  database.transaction(() => {
+    database.exec(`
+      CREATE TABLE wa_watches_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL DEFAULT '',
+        keywords TEXT NOT NULL DEFAULT '',
+        kb_enabled INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE TABLE IF NOT EXISTS wa_watch_chats (
+        watch_id INTEGER NOT NULL,
+        account_id TEXT NOT NULL,
+        chat_jid TEXT NOT NULL,
+        label TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (account_id, chat_jid)
+      );
+    `);
+
+    const old = database
+      .prepare("SELECT * FROM wa_watches ORDER BY id")
+      .all() as Array<{
+      id: number;
+      account_id: string;
+      chat_jid: string;
+      label: string;
+      keywords: string;
+      kb_enabled: number;
+      enabled: number;
+    }>;
+
+    const groups = new Map<string, typeof old>();
+    for (const row of old) {
+      const key = `${row.keywords}\n${row.kb_enabled}\n${row.enabled}`;
+      const g = groups.get(key) ?? [];
+      g.push(row);
+      groups.set(key, g);
+    }
+
+    const insertWatch = database.prepare(
+      `INSERT INTO wa_watches_new (id, name, keywords, kb_enabled, enabled) VALUES (?,?,?,?,?)`
+    );
+    const insertChat = database.prepare(
+      `INSERT OR IGNORE INTO wa_watch_chats (watch_id, account_id, chat_jid, label) VALUES (?,?,?,?)`
+    );
+
+    for (const group of groups.values()) {
+      const keep = group[0];
+      const labels = [...new Set(group.map((r) => r.label).filter(Boolean))];
+      const name = labels.length === 1 ? labels[0] : labels[0] || "Vigia";
+      insertWatch.run(keep.id, name, keep.keywords, keep.kb_enabled, keep.enabled);
+      for (const row of group) {
+        insertChat.run(keep.id, row.account_id, row.chat_jid, row.label);
+      }
+    }
+
+    database.exec(`
+      DROP TABLE wa_watches;
+      ALTER TABLE wa_watches_new RENAME TO wa_watches;
+    `);
+  })();
 }
