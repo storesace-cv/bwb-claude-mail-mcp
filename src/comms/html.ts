@@ -1,4 +1,5 @@
 import { tableSortScript } from "./ui/table-sort.js";
+import { waitModalScript } from "./ui/wait-modal.js";
 
 function esc(s: string): string {
   return String(s)
@@ -11,7 +12,13 @@ function esc(s: string): string {
 export function layout(
   title: string,
   body: string,
-  opts?: { flash?: string; error?: string; wrapClass?: string; extraHead?: string }
+  opts?: {
+    flash?: string;
+    error?: string;
+    wrapClass?: string;
+    extraHead?: string;
+    waitJob?: { id: string; kind: string; title: string };
+  }
 ): string {
   return `<!DOCTYPE html>
 <html lang="pt">
@@ -102,15 +109,61 @@ export function layout(
     .has-tip[data-help]:hover::after, .has-tip[data-help]:focus::after {
       opacity: 1; visibility: visible;
     }
+    .bwb-wait-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.28); z-index: 200;
+      display: none; align-items: center; justify-content: center; padding: 1rem;
+    }
+    .bwb-wait-backdrop.open { display: flex; }
+    .bwb-wait-dialog {
+      max-width: 26rem; width: 100%; text-align: center;
+      background: var(--surface); border: 1px solid var(--border-soft);
+      border-radius: 16px; padding: 1.5rem 1.35rem 1.25rem; box-shadow: 0 20px 50px rgba(0,0,0,.14);
+    }
+    .bwb-wait-title { margin: 0 0 .4rem; font-size: 1.1rem; font-weight: 650; }
+    .bwb-wait-lead { margin: 0 0 1.1rem; font-size: .875rem; color: var(--muted); line-height: 1.45; }
+    .bwb-wait-progress-track { height: 10px; border-radius: 999px; background: var(--fill-hover); overflow: hidden; }
+    .bwb-wait-progress-bar { height: 100%; width: 0; border-radius: 999px; background: var(--accent); transition: width .35s ease; }
+    .bwb-wait-progress-meta { display: flex; justify-content: space-between; align-items: center; margin-top: .65rem; font-size: .8125rem; }
+    .bwb-wait-progress-pct { font-weight: 650; }
+    .bwb-wait-progress-label { color: var(--muted); font-weight: 500; }
+    .bwb-wait-steps { list-style: none; margin: 1rem 0 0; padding: 0; text-align: left; font-size: .8125rem; }
+    .bwb-wait-steps--hidden { display: none; }
+    .bwb-wait-steps li { position: relative; padding: .5rem 0 .5rem 1.7rem; color: var(--muted); border-bottom: 1px solid var(--border-soft); }
+    .bwb-wait-steps li:last-child { border-bottom: none; }
+    .bwb-wait-steps li::before {
+      content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+      width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--border); background: var(--surface);
+    }
+    .bwb-wait-steps li.active { color: var(--text); font-weight: 650; }
+    .bwb-wait-steps li.active::before { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 3px var(--fill-hover); }
+    .bwb-wait-steps li.done { color: var(--muted); }
+    .bwb-wait-steps li.done::before { border-color: #16a34a; background: #16a34a; }
   </style>
 </head>
-<body>
+<body${opts?.waitJob ? ` data-wait-id="${esc(opts.waitJob.id)}" data-wait-kind="${esc(opts.waitJob.kind)}" data-wait-title="${esc(opts.waitJob.title)}"` : ""}>
   <div class="wrap${opts?.wrapClass ? ` ${esc(opts.wrapClass)}` : ""}">
     ${opts?.flash ? `<div class="flash">${esc(opts.flash)}</div>` : ""}
     ${opts?.error ? `<div class="error">${esc(opts.error)}</div>` : ""}
     ${body}
   </div>
+  <div id="bwb-wait-modal" class="bwb-wait-backdrop" aria-hidden="true" role="dialog" aria-labelledby="bwb-wait-modal-title" aria-modal="true">
+    <div class="bwb-wait-dialog">
+      <h3 id="bwb-wait-modal-title" class="bwb-wait-title">A processar</h3>
+      <p id="bwb-wait-modal-lead" class="bwb-wait-lead">Aguarde enquanto a operação decorre.</p>
+      <div class="bwb-wait-progress-wrap" aria-live="polite">
+        <div class="bwb-wait-progress-track">
+          <div id="bwb-wait-progress-bar" class="bwb-wait-progress-bar" style="width: 0%"></div>
+        </div>
+        <div class="bwb-wait-progress-meta">
+          <span id="bwb-wait-progress-pct" class="bwb-wait-progress-pct">0%</span>
+          <span id="bwb-wait-progress-label" class="bwb-wait-progress-label">A iniciar…</span>
+        </div>
+      </div>
+      <ul class="bwb-wait-steps bwb-wait-steps--hidden" id="bwb-wait-steps" hidden></ul>
+    </div>
+  </div>
   <script>${tableSortScript}</script>
+  <script>${waitModalScript}</script>
 </body>
 </html>`;
 }

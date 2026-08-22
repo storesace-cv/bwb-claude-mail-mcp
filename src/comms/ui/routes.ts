@@ -862,7 +862,7 @@ adminRouter.post("/jobs/mail", (req, res) => {
     res.status(403).send("CSRF");
     return;
   }
-  const id = startManualJob("Sincronizar correio", runMailPipeline);
+  const id = startManualJob("Sincronizar correio", "mail", runMailPipeline);
   res.redirect(303, `/admin/jobs/run/${id}`);
 });
 
@@ -871,7 +871,7 @@ adminRouter.post("/jobs/wa", (req, res) => {
     res.status(403).send("CSRF");
     return;
   }
-  const id = startManualJob("Sincronizar WhatsApp", runWaPipeline);
+  const id = startManualJob("Sincronizar WhatsApp", "wa", runWaPipeline);
   res.redirect(303, `/admin/jobs/run/${id}`);
 });
 
@@ -880,7 +880,7 @@ adminRouter.post("/jobs/triage", (req, res) => {
     res.status(403).send("CSRF");
     return;
   }
-  const id = startManualJob("Organizar INBOX", runWeekdayNow);
+  const id = startManualJob("Organizar INBOX", "triage", runWeekdayNow);
   res.redirect(303, `/admin/jobs/run/${id}`);
 });
 
@@ -889,8 +889,23 @@ adminRouter.post("/jobs/agt", (req, res) => {
     res.status(403).send("CSRF");
     return;
   }
-  const id = startManualJob("Base de conhecimento", runAgtNow);
+  const id = startManualJob("Base de conhecimento", "agt", runAgtNow);
   res.redirect(303, `/admin/jobs/run/${id}`);
+});
+
+adminRouter.get("/jobs/run/:id/status", (req, res) => {
+  const job = getManualJob(String(req.params.id));
+  if (!job) {
+    res.json({ status: "missing" });
+    return;
+  }
+  res.json({
+    id: job.id,
+    kind: job.kind,
+    title: job.title,
+    status: job.status,
+    error: job.error ?? null,
+  });
 });
 
 adminRouter.get("/jobs/run/:id", (req, res) => {
@@ -900,17 +915,11 @@ adminRouter.get("/jobs/run/:id", (req, res) => {
     return;
   }
   if (job.status === "running") {
-    const elapsed = Math.max(1, Math.round((Date.now() - job.startedAt) / 1000));
     res.type("html").send(
       layout(
-        "A correr",
-        `${header("jobs")}
-        <div class="panel">
-          <h2>${esc(job.title)}</h2>
-          <p>A trabalhar nas caixas de correio. Pode demorar uns minutos — esta página actualiza sozinha.</p>
-          <p class="muted">À espera há ${elapsed} s.</p>
-        </div>`,
-        { extraHead: '<meta http-equiv="refresh" content="2">' }
+        job.title,
+        `${header("jobs")}<div class="panel"><h2>${esc(job.title)}</h2><p class="muted">A operação está a decorrer na janela à frente. Não feche esta página.</p></div>`,
+        { waitJob: { id: job.id, kind: job.kind, title: job.title } }
       )
     );
     return;
