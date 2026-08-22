@@ -44,6 +44,7 @@ import {
   mailMaxAgeDaysClamp,
   s3CredentialsOk,
   s3TenantId,
+  seedIssuersFromImportedInvoices,
   setInvoiceLists,
   setMailMaxAgeDays,
   setS3TenantId,
@@ -96,6 +97,7 @@ adminRouter.get("/logout", (_req, res) => {
 adminRouter.use(requireAdminSession);
 
 adminRouter.get("/settings", (req, res) => {
+  const seeded = seedIssuersFromImportedInvoices();
   const days = mailMaxAgeDays();
   const tenant = s3TenantId();
   const stage = invoiceStage();
@@ -108,11 +110,13 @@ adminRouter.get("/settings", (req, res) => {
       : stage === "review"
         ? "Preenche destinatários e revê emissores. Novos anexos não são guardados. Depois disto, Re-aplicar apaga documentos que não casem no PDF."
         : "Só se guarda o anexo se o texto do PDF casar com emissores ou destinatários.";
-  const flash = saved
-    ? "Definições guardadas."
-    : reapplied
-      ? `Re-aplicar: ${reapplied} removidos.`
-      : undefined;
+  const flash = seeded
+    ? `Lista de emissores preenchida a partir de ${seeded.total} linhas (facturas já importadas; equivalente à 1.ª sincronização). Revê a lista e acrescenta destinatários.`
+    : saved
+      ? "Definições guardadas."
+      : reapplied
+        ? `Re-aplicar: ${reapplied} removidos.`
+        : undefined;
   res.type("html").send(
     layout(
       "Definições",

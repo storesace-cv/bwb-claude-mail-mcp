@@ -1,6 +1,8 @@
 import { getDb } from "./db.js";
 import { commsConfig } from "./config.js";
 import {
+  issuerLinesFromFromHeader,
+  mergeWhitelistLines,
   recipientLinesNonEmpty,
   type InvoiceStage,
 } from "./mail/invoice-whitelist.js";
@@ -11,6 +13,7 @@ const STAGE = "invoice_whitelist_stage";
 const ISSUERS = "invoice_issuers";
 const RECIPIENTS = "invoice_recipients";
 const SEED_DONE = "invoice_seed_done";
+const ISSUERS_FROM_IMPORT = "invoice_issuers_from_import";
 
 export const TENANT_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
@@ -91,6 +94,27 @@ export function markInvoiceSeedDone(): void {
   if (getSetting(SEED_DONE, "") === "1") return;
   setSetting(SEED_DONE, "1");
   if (!recipientLinesNonEmpty(invoiceRecipients())) setSetting(STAGE, "review");
+}
+
+/** One-shot: fill issuer whitelist from From of messages already stored as invoices. */
+export function seedIssuersFromImportedInvoices(): { added: number; total: number } | null {
+  if (getSetting(ISSUERS_FROM_IMPORT, "") === "1") return null;
+  const rows = getDb()
+    .prepare(
+      `SELECT DISTINCT m.from_header AS from_header
+       FROM invoices i
+       JOIN mail_messages m ON m.id = i.mail_message_pk
+       WHERE m.from_header IS NOT NULL AND TRIM(m.from_header) != ''`
+    )
+    .all() as Array<{ from_header: string }>;
+  const extra = rows.flatMap((r) => issuerLinesFromFromHeader(r.from_header));
+  if (!extra.length) return null;
+  const merged = mergeWhitelistLines(invoiceIssuers(), extra);
+  setSetting(ISSUERS, merged);
+  setSetting(ISSUERS_FROM_IMPORT, "1");
+  markInvoiceSeedDone();
+  const total = merged ? merged.split(/\n/).filter(Boolean).length : 0;
+  return { added: extra.length, total };
 }
 
 export function s3CredentialsOk(): boolean {

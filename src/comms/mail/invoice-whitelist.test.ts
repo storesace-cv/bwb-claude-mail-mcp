@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   documentAccepted,
   foldText,
+  issuerLinesFromFromHeader,
   shouldKeepInvoice,
 } from "./invoice-whitelist.js";
 
@@ -41,5 +42,13 @@ describe("documentAccepted", () => {
 
   it("review never keeps", () => {
     assert.equal(shouldKeepInvoice("review", pdf, "jorge&peixinho", "bwb"), false);
+  });
+});
+
+describe("issuerLinesFromFromHeader", () => {
+  it("splits name with AND and keeps email", () => {
+    const lines = issuerLinesFromFromHeader("Jorge Peixinho <jorge@bwb.pt>");
+    assert.equal(lines.includes("jorge@bwb.pt"), true);
+    assert.equal(lines.includes("Jorge&Peixinho"), true);
   });
 });

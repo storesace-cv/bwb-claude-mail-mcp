@@ -68,3 +68,39 @@ export function shouldKeepInvoice(
 export function recipientLinesNonEmpty(raw: string): boolean {
   return parseWhitelistLines(raw).length > 0;
 }
+
+/** Keyword lines for the issuer list from an email From header (name AND-words + email). */
+export function issuerLinesFromFromHeader(fromHeader: string): string[] {
+  const raw = fromHeader.trim();
+  if (!raw) return [];
+  const out: string[] = [];
+  const email = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  if (email) out.push(email[0].toLowerCase());
+  const name = raw
+    .replace(/<[^>]+>/g, " ")
+    .replace(/"/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = name
+    .split(" ")
+    .map((w) => w.replace(/[,;]+/g, ""))
+    .filter((w) => w.length > 1 && !w.includes("@"));
+  if (words.length >= 2) out.push(words.join("&"));
+  else if (words.length === 1) out.push(words[0]);
+  return [...new Set(out)];
+}
+
+export function mergeWhitelistLines(existing: string, extra: string[]): string {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const line of [...existing.split(/\r?\n/), ...extra]) {
+    const t = line.trim();
+    if (!t) continue;
+    const key = foldText(t);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push(t);
+  }
+  return lines.sort((a, b) => a.localeCompare(b, "pt")).join("\n");
+}
+
