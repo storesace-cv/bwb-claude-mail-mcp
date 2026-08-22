@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import { forceChangePassword, getAdmin, verifyAdminCredentials } from "../admin-store.js";
 import { getDb } from "../db.js";
 import { esc, header, layout } from "../html.js";
-import { runMailPipeline, runWaPipeline } from "../jobs/run.js";
+import { runAgtNow, runMailPipeline, runWaPipeline, runWeekdayNow } from "../jobs/run.js";
 import { buildChatGptPack } from "../pack.js";
 import { loadRules, saveRules } from "../rules/apply.js";
 import { checkCsrf, clearSessionCookie, requireAdminSession, setSessionCookie } from "../session.js";
@@ -482,11 +482,18 @@ adminRouter.get("/jobs", async (_req, res) => {
     <div class="panel">
       <p class="muted">Sessão: ${esc(admin.email)}. Jobs também correm sozinhos no processo.</p>
       <form method="post" action="/admin/jobs/mail" class="actions">
-        <button type="submit">Correr mail agora</button>
+        <button type="submit">Correr mail sync agora</button>
       </form>
       <form method="post" action="/admin/jobs/wa" class="actions">
-        <button class="secondary" type="submit">Correr WhatsApp agora</button>
+        <button class="secondary" type="submit">Correr WhatsApp sync agora</button>
       </form>
+      <form method="post" action="/admin/jobs/triage" class="actions">
+        <button type="submit">Correr triage INBOX (Claude weekday)</button>
+      </form>
+      <form method="post" action="/admin/jobs/agt" class="actions">
+        <button class="secondary" type="submit">Correr AGT KB (meio-dia)</button>
+      </form>
+      <p class="muted">Agendados: dias úteis 07:00 Europe/Lisbon (triage); todos os dias 12:00 (AGT). Catch-up se o processo estiver em baixo à hora exacta.</p>
     </div>`;
   res.type("html").send(layout("Jobs", body));
 });
@@ -512,6 +519,36 @@ adminRouter.post("/jobs/wa", async (req, res) => {
     return;
   }
   const result = await runWaPipeline();
+  res.type("html").send(
+    layout(
+      "Jobs",
+      `${header("jobs")}<div class="panel"><pre class="mono">${esc(JSON.stringify(result, null, 2))}</pre>
+      <p><a href="/admin/jobs">voltar</a></p></div>`
+    )
+  );
+});
+
+adminRouter.post("/jobs/triage", async (req, res) => {
+  if (!checkCsrf(req)) {
+    res.status(403).send("CSRF");
+    return;
+  }
+  const result = await runWeekdayNow();
+  res.type("html").send(
+    layout(
+      "Jobs",
+      `${header("jobs")}<div class="panel"><pre class="mono">${esc(JSON.stringify(result, null, 2))}</pre>
+      <p><a href="/admin/jobs">voltar</a></p></div>`
+    )
+  );
+});
+
+adminRouter.post("/jobs/agt", async (req, res) => {
+  if (!checkCsrf(req)) {
+    res.status(403).send("CSRF");
+    return;
+  }
+  const result = await runAgtNow();
   res.type("html").send(
     layout(
       "Jobs",

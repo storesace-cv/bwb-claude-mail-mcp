@@ -37,7 +37,7 @@ export async function syncAllWhatsapp(): Promise<{ accounts: number; inserted: n
   const accounts = await listWaAccounts();
   let inserted = 0;
   for (const account of accounts) {
-    const dbPath = path.join(account.storeDir, "whatsapp.db");
+    const dbPath = path.join(account.storeDir, "messages.db");
     try {
       await fs.access(dbPath);
     } catch {

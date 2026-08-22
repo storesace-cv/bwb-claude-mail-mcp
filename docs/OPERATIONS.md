@@ -106,6 +106,13 @@ bash deploy/install-whatsapp.sh     # WhatsApp dual (migra store legado se preci
 
 O processo faz IMAP + arquivo WhatsApp (allowlist) + regras de pasta. ChatGPT Pro só lê o pack `/admin/pack.md` ou o MCP de leitura. Sem API OpenAI.
 
+Agendamentos (Europe/Lisbon), réplica dos tasks Claude Desktop:
+
+- `weekday-inbox-triage` — dias úteis a partir das 07:00: relatório de não lidos, arquivo helpdesk@bwb.pt por cliente (OTOBO), newsletters/marketing + purge >8 dias. Sem rascunhos LLM.
+- `atualizacao-base-de-conhecimento-agt` — todos os dias a partir das 12:00: grupo `AGT - IVA ANGOLA`, keywords, drafts KB + JSON em `/var/lib/bwb-comms/agt/`, cópia de anexos se existirem no store.
+
+Correr à mão: `/admin/jobs`.
+
 DNS: `A comms.bwb.pt` → o mesmo VPS.
 
 ```bash

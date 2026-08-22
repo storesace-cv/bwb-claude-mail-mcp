@@ -25,8 +25,14 @@ export const commsConfig = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   mailSyncMs: Number(process.env.MAIL_SYNC_MS ?? String(10 * 60_000)),
   waSyncMs: Number(process.env.WA_SYNC_MS ?? String(5 * 60_000)),
-  digestHour: Number(process.env.DIGEST_HOUR ?? "7"),
   digestTo: process.env.DIGEST_TO ?? "",
+  digestHour: Number(process.env.DIGEST_HOUR ?? "7"),
+  helpdeskContextUrl: process.env.HELPDESK_CONTEXT_URL ?? "",
+  helpdeskContextToken: process.env.HELPDESK_CONTEXT_TOKEN ?? "",
+  agtGroupJid: process.env.AGT_GROUP_JID ?? "244928277927-1565965350@g.us",
+  get agtKbJsonPath() {
+    return process.env.AGT_KB_JSON_PATH ?? path.join(this.stateDir, "agt", "agt-knowledge-base.json");
+  },
   get dbPath() {
     return process.env.COMMS_DB_PATH ?? path.join(this.stateDir, "comms.db");
   },

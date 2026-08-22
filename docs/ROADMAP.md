@@ -47,6 +47,7 @@
 - [x] KB drafts manuais + pack Markdown `/admin/pack.md` para ChatGPT Pro
 - [x] MCP read-only `POST /mcp` (Bearer) — sem writes
 - [x] Deploy: `deploy/install-comms.sh` (não reinicia conectores Claude)
+- [x] Réplica dos 2 scheduled tasks Claude: triage INBOX (07:00 úteis) e AGT KB (12:00)
 
 ## Next
 

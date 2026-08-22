@@ -1,7 +1,8 @@
 import { commsConfig } from "../config.js";
+import { runWeekdayInboxTriage, runWeekdayInboxTriageIfDue } from "../mail/weekday-triage.js";
 import { applyFolderRules } from "../rules/apply.js";
-import { sendDigestIfDue } from "../mail/digest.js";
 import { syncAllMail } from "../mail/sync.js";
+import { runAgtKb, runAgtKbIfDue } from "../whatsapp/agt-kb.js";
 import { syncAllWhatsapp } from "../whatsapp/sync.js";
 
 export interface JobResult {
@@ -40,20 +41,6 @@ export async function runMailPipeline(): Promise<JobResult[]> {
       detail: err instanceof Error ? err.message : String(err),
     });
   }
-  try {
-    const digest = await sendDigestIfDue();
-    results.push({
-      name: "digest",
-      ok: true,
-      detail: digest.sent ? "enviado" : "não devido",
-    });
-  } catch (err) {
-    results.push({
-      name: "digest",
-      ok: false,
-      detail: err instanceof Error ? err.message : String(err),
-    });
-  }
   return results;
 }
 
@@ -74,6 +61,57 @@ export async function runWaPipeline(): Promise<JobResult> {
   }
 }
 
+export async function runScheduledTasks(): Promise<JobResult[]> {
+  const out: JobResult[] = [];
+  try {
+    const t = await runWeekdayInboxTriageIfDue();
+    out.push({ name: "weekday-inbox-triage", ok: true, detail: t.ran ? t.detail : t.detail });
+  } catch (err) {
+    out.push({
+      name: "weekday-inbox-triage",
+      ok: false,
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+  try {
+    const t = await runAgtKbIfDue();
+    out.push({ name: "agt-kb", ok: true, detail: t.detail });
+  } catch (err) {
+    out.push({
+      name: "agt-kb",
+      ok: false,
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return out;
+}
+
+export async function runWeekdayNow(): Promise<JobResult> {
+  try {
+    const text = await runWeekdayInboxTriage();
+    return { name: "weekday-inbox-triage", ok: true, detail: text.slice(0, 500) };
+  } catch (err) {
+    return {
+      name: "weekday-inbox-triage",
+      ok: false,
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function runAgtNow(): Promise<JobResult> {
+  try {
+    const text = await runAgtKb();
+    return { name: "agt-kb", ok: true, detail: text.slice(0, 500) };
+  } catch (err) {
+    return {
+      name: "agt-kb",
+      ok: false,
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 export function startSchedulers(): void {
   setInterval(() => {
     void runMailPipeline();
@@ -81,8 +119,12 @@ export function startSchedulers(): void {
   setInterval(() => {
     void runWaPipeline();
   }, commsConfig.waSyncMs);
+  setInterval(() => {
+    void runScheduledTasks();
+  }, 60_000);
   setTimeout(() => {
     void runMailPipeline();
     void runWaPipeline();
+    void runScheduledTasks();
   }, 15_000);
 }

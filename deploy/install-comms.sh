@@ -47,6 +47,23 @@ cd "$SHIM_DIR"
 npm ci
 npm run build
 
+merge_env_key() {
+  local key="$1"
+  local val=""
+  for src in "$SHIM_DIR/.env" "${BACKEND_DIR:-/var/www/mail-mcp}/.env"; do
+    [[ -f "$src" ]] || continue
+    val="$(grep -E "^${key}=" "$src" | head -1 | cut -d= -f2- || true)"
+    [[ -n "$val" ]] && break
+  done
+  [[ -n "$val" ]] || return 0
+  if grep -qE "^${key}=$" "$ENV_FILE" || grep -qE "^# ${key}=" "$ENV_FILE"; then
+    sed -i "s|^# ${key}=.*|${key}=${val}|" "$ENV_FILE"
+    sed -i "s|^${key}=$|${key}=${val}|" "$ENV_FILE"
+  elif ! grep -qE "^${key}=" "$ENV_FILE"; then
+    echo "${key}=${val}" >> "$ENV_FILE"
+  fi
+}
+
 ENV_FILE="$STATE_DIR/comms.env"
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "==> Creating comms.env"
@@ -55,17 +72,12 @@ if [[ ! -f "$ENV_FILE" ]]; then
   cp "$REPO_ROOT/deploy/env/comms.env.example" "$ENV_FILE"
   sed -i "s/^COMMS_SESSION_SECRET=.*/COMMS_SESSION_SECRET=$SESSION_SECRET/" "$ENV_FILE"
   sed -i "s/^COMMS_AUTH_TOKEN=.*/COMMS_AUTH_TOKEN=$AUTH_TOKEN/" "$ENV_FILE"
-  if [[ -f "$SHIM_DIR/.env" ]]; then
-    for key in MICROSOFT_CLIENT_ID MICROSOFT_CLIENT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET; do
-      val="$(grep -E "^${key}=" "$SHIM_DIR/.env" | head -1 | cut -d= -f2- || true)"
-      if [[ -n "$val" ]] && ! grep -qE "^${key}=" "$ENV_FILE"; then
-        echo "${key}=${val}" >> "$ENV_FILE"
-      elif [[ -n "$val" ]]; then
-        sed -i "s|^# ${key}=.*|${key}=${val}|" "$ENV_FILE" || true
-        grep -qE "^${key}=" "$ENV_FILE" || echo "${key}=${val}" >> "$ENV_FILE"
-      fi
-    done
-  fi
+fi
+for key in MICROSOFT_CLIENT_ID MICROSOFT_CLIENT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET HELPDESK_CONTEXT_URL HELPDESK_CONTEXT_TOKEN; do
+  merge_env_key "$key"
+done
+if ! grep -qE "^AGT_GROUP_JID=" "$ENV_FILE"; then
+  echo "AGT_GROUP_JID=244928277927-1565965350@g.us" >> "$ENV_FILE"
 fi
 chown bwbcomms:bwbcomms "$ENV_FILE"
 chmod 600 "$ENV_FILE"
