@@ -93,10 +93,31 @@ bash deploy/install-whatsapp.sh     # WhatsApp dual (migra store legado se preci
 - Pessoal: `mcp-remote` → `https://mcp-whatsapp.bwb.pt/a/mcp` + Bearer `AUTH_TOKEN`
 - Negócio: segundo server → `https://mcp-whatsapp.bwb.pt/b/mcp` + mesmo Bearer
 
+## BWB Comms (ingest autónomo)
+
+| Item | Value |
+|------|--------|
+| Public URL | `https://comms.bwb.pt` |
+| Admin | `https://comms.bwb.pt/admin` |
+| MCP read-only | `https://comms.bwb.pt/mcp` (Bearer `COMMS_AUTH_TOKEN`) |
+| State | `/var/lib/bwb-comms/` (`comms.db`, `comms.env`, `files/`) |
+| Unit | `bwb-comms.service` |
+| Deploy | `bash deploy/install-comms.sh` (não reinicia conectores Claude) |
+
+O processo faz IMAP + arquivo WhatsApp (allowlist) + regras de pasta. ChatGPT Pro só lê o pack `/admin/pack.md` ou o MCP de leitura. Sem API OpenAI.
+
+DNS: `A comms.bwb.pt` → o mesmo VPS.
+
+```bash
+systemctl status bwb-comms
+journalctl -u bwb-comms -f
+```
+
 ## Backup
 
 - `/var/lib/mail-mcp/`
 - `/var/lib/whatsapp-mcp/` (admin, OAuth keys, `accounts/*/store`)
+- `/var/lib/bwb-comms/`
 
 ## Safety
 

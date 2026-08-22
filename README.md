@@ -4,6 +4,7 @@ Self-hosted [claude-mail-mcp](https://github.com/maxx3250/claude-mail-mcp) conne
 
 - **OAuth 2.1 + DCR + PKCE shim** (Claude.ai Custom Connector)
 - **Backoffice** at `https://mcp-mail.bwb.pt/admin` for multi-account IMAP/SMTP management
+- **BWB Comms** at `https://comms.bwb.pt/admin` — ingest autónomo (unanswered, facturas, WhatsApp allowlist, KB). Deploy: `bash deploy/install-comms.sh`
 - Hardened nginx + systemd on Ubuntu 24.04
 
 ## Architecture

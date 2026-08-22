@@ -36,8 +36,21 @@
 - [x] Patch upstream: parse oauth, ImapFlow/nodemailer accessToken, refresh tokens
 - [x] Docs ops: registo Azure/Google + env `MICROSOFT_*` / `GOOGLE_*`
 
+## Done (2026-08-22)
+
+### BWB Comms (autónomo, sem API OpenAI)
+
+- [x] Serviço `bwb-comms` no mesmo VPS (`comms.bwb.pt`): jobs IMAP + SQLite + UI admin
+- [x] Unanswered por thread, digest SMTP, regras de pasta (move IMAP nosso)
+- [x] Facturas: anexos PDF/imagem → disco + texto PDF local
+- [x] WhatsApp: allowlist + sync read-only `whatsapp.db` a/b
+- [x] KB drafts manuais + pack Markdown `/admin/pack.md` para ChatGPT Pro
+- [x] MCP read-only `POST /mcp` (Bearer) — sem writes
+- [x] Deploy: `deploy/install-comms.sh` (não reinicia conectores Claude)
+
 ## Next
 
+- [ ] DNS `A comms.bwb.pt` → VPS (se ainda não existir)
 - [ ] Registar apps Azure (pessoal) + Google Cloud e preencher secrets no VPS
 - [ ] Smoke: ligar conta Outlook.com + Gmail reais na admin
 - [ ] Encrypted off-host backup of `/var/lib/mail-mcp/` and `/var/lib/whatsapp-mcp/accounts/`

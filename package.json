@@ -5,13 +5,16 @@
   "description": "OAuth 2.1 shim + admin backoffice for self-hosted claude-mail-mcp and whatsapp-mcp",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc",
     "start": "node --env-file=.env --enable-source-maps dist/index.js",
+    "start:comms": "node --env-file=.env.comms --enable-source-maps dist/comms/index.js",
     "dev": "tsx --env-file=.env src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "dev:comms": "tsx --env-file=.env.comms src/comms/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/comms/mail/threads.test.ts src/comms/mail/invoices.test.ts src/comms/rules/match.test.ts src/comms/whatsapp/store.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

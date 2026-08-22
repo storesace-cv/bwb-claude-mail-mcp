@@ -1,8 +1,10 @@
 node_modules/
 dist/
 .env
+.env.comms
 *.log
 .DS_Store
+__pycache__/
 /var/
 *.pem
 *.key
