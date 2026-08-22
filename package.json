@@ -14,7 +14,7 @@
     "dev": "tsx --env-file=.env src/index.ts",
     "dev:comms": "tsx --env-file=.env.comms src/comms/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/comms/mail/threads.test.ts src/comms/mail/invoices.test.ts src/comms/rules/match.test.ts src/comms/whatsapp/store.test.ts src/comms/time/lisbon.test.ts src/comms/mail/classify-promo.test.ts src/comms/mail/folders.test.ts src/comms/whatsapp/keywords.test.ts"
+    "test": "tsx --test src/comms/mail/threads.test.ts src/comms/mail/invoices.test.ts src/comms/rules/match.test.ts src/comms/whatsapp/store.test.ts src/comms/time/lisbon.test.ts src/comms/mail/classify-promo.test.ts src/comms/mail/folders.test.ts src/comms/whatsapp/keywords.test.ts src/comms/mail/helpdesk.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

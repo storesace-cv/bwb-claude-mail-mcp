@@ -1,6 +1,6 @@
 import type { MailAccount } from "../accounts.js";
 import { folderPath, sanitizeFolderSegment } from "./folders.js";
-import { clienteLineFrom, lookupCustomerCompany, ticketNumberFrom } from "./helpdesk.js";
+import { resolveHelpdeskClient, ticketFromHeaders, ticketNumberFrom } from "./helpdesk.js";
 import {
   ensureFolder,
   fetchTextPreview,
@@ -11,6 +11,8 @@ import {
   type ListedMsg,
 } from "./imap.js";
 import type { ImapFlow } from "imapflow";
+
+const HELPDESK_FROM = ["helpdesk@bwb.pt", "helpdesk@storesace.cv"];
 
 export interface HelpdeskFileResult {
   byFolder: Record<string, number>;
@@ -23,8 +25,11 @@ export async function fileHelpdeskMail(
   _account: MailAccount
 ): Promise<HelpdeskFileResult> {
   const layout = await loadLayout(client);
-  const uids = await searchUids(client, "INBOX", { from: "helpdesk@bwb.pt" });
-  const msgs = await listEnvelopes(client, "INBOX", uids.slice(0, 200));
+  const uidSet = new Set<number>();
+  for (const from of HELPDESK_FROM) {
+    for (const uid of await searchUids(client, "INBOX", { from })) uidSet.add(uid);
+  }
+  const msgs = await listEnvelopes(client, "INBOX", [...uidSet].slice(0, 200));
   const byFolder: Record<string, number> = {};
   let unclassified = 0;
   const errors: string[] = [];
@@ -32,27 +37,30 @@ export async function fileHelpdeskMail(
   const groups = new Map<string, ListedMsg[]>();
   for (const msg of msgs) {
     let body = "";
-    let ticket = ticketNumberFrom(msg.subject, "");
+    const headerTicket = ticketFromHeaders(msg.headers);
+    let ticket = headerTicket || ticketNumberFrom(msg.subject, "");
     if (!ticket) {
       body = await fetchTextPreview(client, "INBOX", msg.uid);
       ticket = ticketNumberFrom(msg.subject, body);
     }
-    let clientName: string | null = null;
-    if (ticket) {
-      try {
-        clientName = await lookupCustomerCompany(ticket);
-      } catch (err) {
-        errors.push(`ticket ${ticket}: ${err instanceof Error ? err.message : String(err)}`);
-      }
+    if (!body && !clientNameLikelyInHeaders(msg.headers)) {
+      body = await fetchTextPreview(client, "INBOX", msg.uid);
     }
-    if (!clientName) {
-      if (!body) body = await fetchTextPreview(client, "INBOX", msg.uid);
-      clientName = clienteLineFrom(body);
+    let resolved;
+    try {
+      resolved = await resolveHelpdeskClient({
+        headers: msg.headers,
+        subject: msg.subject,
+        body,
+      });
+    } catch (err) {
+      errors.push(`uid ${msg.uid}: ${err instanceof Error ? err.message : String(err)}`);
+      resolved = { clientName: null, ticket, source: "none" };
     }
-    const dest = clientName
-      ? folderPath(layout, "helpdesk", sanitizeFolderSegment(clientName, layout.delimiter))
+    const dest = resolved.clientName
+      ? folderPath(layout, "helpdesk", sanitizeFolderSegment(resolved.clientName, layout.delimiter))
       : folderPath(layout, "helpdesk", "_sem-cliente");
-    if (!clientName) unclassified += 1;
+    if (!resolved.clientName) unclassified += 1;
     const list = groups.get(dest) ?? [];
     list.push(msg);
     groups.set(dest, list);
@@ -69,4 +77,14 @@ export async function fileHelpdeskMail(
     byFolder[dest] = n;
   }
   return { byFolder, unclassified, errors };
+}
+
+function clientNameLikelyInHeaders(headers: Record<string, string>): boolean {
+  return Boolean(
+    headers["x-bwb-customercompany"] ||
+      headers["x-bwb-customer-company"] ||
+      headers["x-bwb-company"] ||
+      headers["x-bwb-customer"] ||
+      headers["x-bwb-customerid"]
+  );
 }

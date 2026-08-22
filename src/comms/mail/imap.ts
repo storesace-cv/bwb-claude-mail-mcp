@@ -86,6 +86,7 @@ export interface ListedMsg {
   subject: string;
   date: Date | null;
   messageId: string;
+  headers: Record<string, string>;
 }
 
 export async function listEnvelopes(
@@ -97,7 +98,11 @@ export async function listEnvelopes(
   const lock = await client.getMailboxLock(folder);
   const out: ListedMsg[] = [];
   try {
-    for await (const msg of client.fetch(uids, { uid: true, envelope: true }, { uid: true })) {
+    for await (const msg of client.fetch(
+      uids,
+      { uid: true, envelope: true, headers: true },
+      { uid: true }
+    )) {
       const env = msg.envelope;
       out.push({
         uid: Number(msg.uid),
@@ -105,6 +110,7 @@ export async function listEnvelopes(
         subject: envelopeFrom(env?.subject),
         date: env?.date ? new Date(env.date) : null,
         messageId: envelopeFrom(env?.messageId),
+        headers: headerRecord(msg.headers),
       });
     }
   } finally {
@@ -159,4 +165,39 @@ export async function deleteUids(client: ImapFlow, folder: string, uids: number[
   } finally {
     lock.release();
   }
+}
+
+export function headerRecord(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw) return out;
+  if (raw instanceof Map) {
+    for (const [k, v] of raw.entries()) {
+      const text = Array.isArray(v) ? String(v[0] ?? "") : String(v ?? "");
+      if (text) out[String(k).toLowerCase()] = text;
+    }
+    return out;
+  }
+  if (Buffer.isBuffer(raw) || typeof raw === "string") {
+    const text = Buffer.isBuffer(raw) ? raw.toString("utf8") : raw;
+    let current = "";
+    for (const line of text.split(/\r?\n/)) {
+      if (/^[ \t]/.test(line) && current) {
+        out[current] = `${out[current]} ${line.trim()}`;
+        continue;
+      }
+      const m = /^([^:\s]+):\s*(.*)$/.exec(line);
+      if (m) {
+        current = m[1].toLowerCase();
+        out[current] = m[2] ?? "";
+      }
+    }
+    return out;
+  }
+  if (typeof raw === "object") {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (v == null) continue;
+      out[k.toLowerCase()] = Array.isArray(v) ? String(v[0] ?? "") : String(v);
+    }
+  }
+  return out;
 }

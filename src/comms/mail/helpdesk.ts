@@ -3,6 +3,36 @@ import { commsConfig } from "../config.js";
 const TICKET_RE = /Ticket#\s*(\d{8,})/i;
 const CLIENTE_RE = /Cliente:\s*(.+)/i;
 
+const COMPANY_HEADER_KEYS = [
+  "x-bwb-customercompany",
+  "x-bwb-customer-company",
+  "x-bwb-company",
+  "x-bwb-customer",
+  "x-bwb-customerid",
+];
+
+export function xBwbHeaders(headers: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.startsWith("x-bwb-") && v.trim()) out[k] = v.trim();
+  }
+  return out;
+}
+
+export function ticketFromHeaders(headers: Record<string, string>): string | null {
+  const n = headers["x-bwb-ticketnumber"]?.trim();
+  return n || null;
+}
+
+export function clientNameFromHeaders(headers: Record<string, string>): string | null {
+  const xbwb = xBwbHeaders(headers);
+  for (const key of COMPANY_HEADER_KEYS) {
+    const v = xbwb[key];
+    if (v) return v;
+  }
+  return null;
+}
+
 export function ticketNumberFrom(subject: string, body: string): string | null {
   return TICKET_RE.exec(subject)?.[1] ?? TICKET_RE.exec(body)?.[1] ?? null;
 }
@@ -37,4 +67,26 @@ export async function lookupCustomerCompany(ticketNumber: string): Promise<strin
   } catch {
     return null;
   }
+}
+
+/** X-BWB-* first, then OTOBO API, then "Cliente:" in the body. */
+export async function resolveHelpdeskClient(input: {
+  headers: Record<string, string>;
+  subject: string;
+  body: string;
+}): Promise<{ clientName: string | null; ticket: string | null; source: string }> {
+  const fromHeader = clientNameFromHeaders(input.headers);
+  const ticket = ticketFromHeaders(input.headers) || ticketNumberFrom(input.subject, input.body);
+  if (fromHeader) return { clientName: fromHeader, ticket, source: "x-bwb" };
+  if (ticket) {
+    try {
+      const company = await lookupCustomerCompany(ticket);
+      if (company) return { clientName: company, ticket, source: "otobo-api" };
+    } catch {
+      // fall through
+    }
+  }
+  const fromBody = clienteLineFrom(input.body);
+  if (fromBody) return { clientName: fromBody, ticket, source: "body" };
+  return { clientName: null, ticket, source: "none" };
 }

@@ -211,6 +211,10 @@ adminRouter.get("/whatsapp", async (req, res) => {
   }>;
   const flash = String(req.query.error ?? "");
   const body = `${header("whatsapp")}
+    ${jobsContextPanel({
+      highlight: ["agt-kb", "triage"],
+      note: "A KB desta página corre no job de meio-dia. Organizar INBOX (helpdesk/mail) está aqui para veres o quadro completo sem saltar de ecrã.",
+    })}
     <div class="panel">
       <h2>Nova vigia</h2>
       <p class="muted">Selecciona um ou vários grupos/contactos. Palavras-chave e KB aplicam-se a todos da mesma forma.</p>
@@ -295,6 +299,10 @@ adminRouter.get("/whatsapp/:id", async (req, res) => {
   const accounts = await listWaAccounts();
   const chatsByAccount = await listWaChatsByAccount();
   const body = `${header("whatsapp")}
+    ${jobsContextPanel({
+      highlight: ["agt-kb", "triage"],
+      note: "Esta vigia entra no job da base de conhecimento. Organizar INBOX continua visível: é o outro agendamento do Comms (helpdesk + INBOX).",
+    })}
     <div class="panel">
       <h2>Editar vigia</h2>
       <p class="muted">Podes acrescentar conversas: ficam com as mesmas palavras-chave e opções.</p>
@@ -672,6 +680,13 @@ adminRouter.get("/rules/:id", async (req, res) => {
   const folders = uniqueFolders(listCachedFolders(rule.accountId));
   const senders = recentSenders();
   const body = `${header("rules")}
+    ${jobsContextPanel({
+      highlight: rule.kind === "helpdesk" ? ["triage"] : ["triage", "agt-kb"],
+      note:
+        rule.kind === "helpdesk"
+          ? "Esta regra só corre quando o job Organizar INBOX corre (dias úteis). Arquivo: X-BWB-* → API OTOBO → linha Cliente:."
+          : "O Organizar INBOX aplica as regras de mail (incluindo helpdesk). O job das 12:00 é a KB WhatsApp.",
+    })}
     <div class="panel">
       <h2>Editar regra</h2>
       ${ruleForm({ accounts, folders, senders, rule, action: `/admin/rules/${rule.id}` })}
@@ -905,6 +920,46 @@ function decodeWatchChat(value: string): { accountId: string; chatJid: string } 
   const i = value.indexOf("::");
   if (i < 0) throw new Error("Escolhe uma conversa");
   return { accountId: value.slice(0, i), chatJid: value.slice(i + 2) };
+}
+
+function jobsContextPanel(opts: { highlight: string[]; note: string }): string {
+  const schedules = listSchedules();
+  const runAt: Record<string, string> = {
+    triage: "/admin/jobs/triage",
+    "agt-kb": "/admin/jobs/agt",
+  };
+  const why: Record<string, string> = {
+    triage: "Organizar INBOX: arquivo helpdesk por cliente e newsletters/marketing.",
+    "agt-kb": "Base de conhecimento: lê vigias WhatsApp ligadas.",
+  };
+  return `<div class="panel">
+    <h2>Jobs relacionados</h2>
+    <p class="muted">${esc(opts.note)} Os mesmos agendamentos estão em Regras e em Jobs.</p>
+    <table class="one-line">
+      <thead><tr><th>Job</th><th>O que faz</th><th>Hora</th><th>Última corrida</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        ${schedules
+          .map((s) => {
+            const last = getCursor(`schedule:${s.id}`);
+            const run = runAt[s.id];
+            const related = opts.highlight.includes(s.id);
+            return `<tr class="${related ? "job-related" : ""}">
+              <td>${esc(s.title)}</td>
+              <td>${esc(why[s.id] ?? s.job)}</td>
+              <td>${String(s.hour).padStart(2, "0")}:00 ${s.weekdaysOnly ? "(úteis)" : "(todos)"}</td>
+              <td class="muted">${esc(last ?? "nunca")}</td>
+              <td>${s.enabled ? "ligado" : "desligado"}</td>
+              <td>${
+                run
+                  ? `<form method="post" action="${esc(run)}"><button class="secondary" type="submit">Correr agora</button></form>`
+                  : ""
+              }</td>
+            </tr>`;
+          })
+          .join("")}
+      </tbody>
+    </table>
+  </div>`;
 }
 
 function asStringList(v: unknown): string[] {

@@ -71,6 +71,7 @@ export function layout(title: string, body: string, opts?: { flash?: string; err
     .check-list .chk { flex-direction: row; align-items: center; gap: .5rem; font-size: .875rem; font-weight: 400; color: var(--text); margin: .2rem 0; }
     .check-list .mini { margin: .25rem 0 .4rem; font-size: .75rem; padding: .3rem .7rem; }
     .badge { display: inline-block; font-size: .6875rem; padding: .15rem .5rem; border-radius: 980px; background: var(--fill-hover); }
+    tr.job-related td { background: var(--fill); }
   </style>
 </head>
 <body>
