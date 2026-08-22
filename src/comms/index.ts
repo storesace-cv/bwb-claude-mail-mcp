@@ -3,7 +3,7 @@ import cookieParser from "cookie-parser";
 import { ensureAdminBootstrap } from "./admin-store.js";
 import { commsConfig } from "./config.js";
 import { getDb } from "./db.js";
-import { mailAttachmentGateError } from "./settings.js";
+import { mailAttachmentGateError, seedIssuersFromImportedInvoices } from "./settings.js";
 import { migrateLocalInvoicesToS3, migrateLocalWhatsappAgtToS3 } from "./storage.js";
 import { startSchedulers } from "./jobs/run.js";
 import { handleMcp } from "./mcp.js";
@@ -38,6 +38,7 @@ async function migrateAttachmentsInBackground(): Promise<void> {
 
 async function main(): Promise<void> {
   getDb();
+  seedIssuersFromImportedInvoices();
   await ensureAdminBootstrap({
     name: process.env.BOOTSTRAP_ADMIN_NAME ?? "Jorge Peixinho",
     email: process.env.BOOTSTRAP_ADMIN_EMAIL ?? "jorge.peixinho@bwb.pt",
