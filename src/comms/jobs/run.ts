@@ -18,7 +18,7 @@ export async function runMailPipeline(): Promise<JobResult[]> {
     results.push({
       name: "mail-sync",
       ok: true,
-      detail: `${sync.accounts} contas, ${sync.fetched} mensagens novas`,
+      detail: `${sync.fetched} mensagens novas em ${sync.accounts} contas`,
     });
   } catch (err) {
     results.push({
@@ -32,7 +32,7 @@ export async function runMailPipeline(): Promise<JobResult[]> {
     results.push({
       name: "folder-rules",
       ok: true,
-      detail: `movidas ${rules.moved}, conflitos ${rules.skippedConflict}`,
+      detail: `${rules.moved} mensagens movidas. ${rules.skippedConflict} não movidas porque várias regras apontavam para pastas diferentes.`,
     });
   } catch (err) {
     results.push({
@@ -50,7 +50,7 @@ export async function runWaPipeline(): Promise<JobResult> {
     return {
       name: "wa-sync",
       ok: true,
-      detail: `${r.accounts} contas, ${r.inserted} novas`,
+      detail: `${r.inserted} mensagens novas em ${r.accounts} contas`,
     };
   } catch (err) {
     return {
@@ -89,7 +89,7 @@ export async function runScheduledTasks(): Promise<JobResult[]> {
 export async function runWeekdayNow(): Promise<JobResult> {
   try {
     const text = await runWeekdayInboxTriage();
-    return { name: "organizar-inbox", ok: true, detail: text.slice(0, 500) };
+    return { name: "organizar-inbox", ok: true, detail: text };
   } catch (err) {
     return {
       name: "organizar-inbox",
@@ -102,7 +102,7 @@ export async function runWeekdayNow(): Promise<JobResult> {
 export async function runAgtNow(): Promise<JobResult> {
   try {
     const text = await runAgtKb();
-    return { name: "agt-kb", ok: true, detail: text.slice(0, 500) };
+    return { name: "agt-kb", ok: true, detail: text };
   } catch (err) {
     return {
       name: "agt-kb",

@@ -4,7 +4,13 @@ import { listMailAccounts } from "../accounts.js";
 import { forceChangePassword, getAdmin, verifyAdminCredentials } from "../admin-store.js";
 import { getDb, getCursor } from "../db.js";
 import { esc, header, layout } from "../html.js";
-import { runAgtNow, runMailPipeline, runWaPipeline, runWeekdayNow } from "../jobs/run.js";
+import {
+  runAgtNow,
+  runMailPipeline,
+  runWaPipeline,
+  runWeekdayNow,
+  type JobResult,
+} from "../jobs/run.js";
 import { buildChatGptPack } from "../pack.js";
 import { loadRules, saveRules } from "../rules/apply.js";
 import {
@@ -837,13 +843,7 @@ adminRouter.post("/jobs/mail", async (req, res) => {
     return;
   }
   const results = await runMailPipeline();
-  res.type("html").send(
-    layout(
-      "Jobs",
-      `${header("jobs")}<div class="panel"><pre class="mono">${esc(JSON.stringify(results, null, 2))}</pre>
-      <p><a href="/admin/jobs">voltar</a></p></div>`
-    )
-  );
+  res.type("html").send(layout("Resultado", jobRunPage("Sincronizar correio", results)));
 });
 
 adminRouter.post("/jobs/wa", async (req, res) => {
@@ -852,13 +852,7 @@ adminRouter.post("/jobs/wa", async (req, res) => {
     return;
   }
   const result = await runWaPipeline();
-  res.type("html").send(
-    layout(
-      "Jobs",
-      `${header("jobs")}<div class="panel"><pre class="mono">${esc(JSON.stringify(result, null, 2))}</pre>
-      <p><a href="/admin/jobs">voltar</a></p></div>`
-    )
-  );
+  res.type("html").send(layout("Resultado", jobRunPage("Sincronizar WhatsApp", result)));
 });
 
 adminRouter.post("/jobs/triage", async (req, res) => {
@@ -867,13 +861,7 @@ adminRouter.post("/jobs/triage", async (req, res) => {
     return;
   }
   const result = await runWeekdayNow();
-  res.type("html").send(
-    layout(
-      "Jobs",
-      `${header("jobs")}<div class="panel"><pre class="mono">${esc(JSON.stringify(result, null, 2))}</pre>
-      <p><a href="/admin/jobs">voltar</a></p></div>`
-    )
-  );
+  res.type("html").send(layout("Resultado", jobRunPage("Organizar INBOX", result)));
 });
 
 adminRouter.post("/jobs/agt", async (req, res) => {
@@ -882,13 +870,7 @@ adminRouter.post("/jobs/agt", async (req, res) => {
     return;
   }
   const result = await runAgtNow();
-  res.type("html").send(
-    layout(
-      "Jobs",
-      `${header("jobs")}<div class="panel"><pre class="mono">${esc(JSON.stringify(result, null, 2))}</pre>
-      <p><a href="/admin/jobs">voltar</a></p></div>`
-    )
-  );
+  res.type("html").send(layout("Resultado", jobRunPage("Base de conhecimento", result)));
 });
 
 adminRouter.get("/pack.md", (_req, res) => {
@@ -918,6 +900,50 @@ function decodeWatchChat(value: string): { accountId: string; chatJid: string } 
   const i = value.indexOf("::");
   if (i < 0) throw new Error("Escolhe uma conversa");
   return { accountId: value.slice(0, i), chatJid: value.slice(i + 2) };
+}
+
+const JOB_STEP_TITLES: Record<string, string> = {
+  "mail-sync": "Leitura do correio",
+  "folder-rules": "Regras de pastas",
+  "wa-sync": "Leitura do WhatsApp",
+  "organizar-inbox": "Organizar INBOX",
+  "agt-kb": "Base de conhecimento",
+};
+
+function humanJobLine(line: string): string {
+  return line
+    .replace(/^\[([a-z0-9]+)\]\s*/i, "")
+    .replace(/^KB WhatsApp\s*[-–]\s*/i, "WhatsApp · ")
+    .replace(/cursor inicializado \(sem reimportar hist[oó]rico\)/i, "primeira leitura: histórico antigo não foi importado");
+}
+
+function jobRunPage(title: string, results: JobResult | JobResult[]): string {
+  const rows = Array.isArray(results) ? results : [results];
+  const allOk = rows.every((r) => r.ok);
+  const steps = rows
+    .map((r) => {
+      const lines = r.detail
+        .split(/\n+/)
+        .map((s) => humanJobLine(s.trim()))
+        .filter(Boolean);
+      const items = lines.length
+        ? `<ul class="job-lines">${lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>`
+        : `<p class="muted">Sem detalhes.</p>`;
+      const showTitle = rows.length > 1;
+      return `<div class="job-step">
+        ${showTitle ? `<h3>${esc(JOB_STEP_TITLES[r.name] ?? r.name)}</h3>` : ""}
+        <p><span class="badge ${r.ok ? "ok" : "err"}">${r.ok ? "Concluído" : "Falhou"}</span></p>
+        ${items}
+      </div>`;
+    })
+    .join("");
+  return `${header("jobs")}
+    <div class="panel">
+      <h2>${esc(title)}</h2>
+      <p>${allOk ? "A corrida terminou bem." : "A corrida terminou com erros. Vê o detalhe em baixo."}</p>
+      ${steps}
+      <p class="actions"><a class="btn secondary" href="/admin/jobs">Voltar aos jobs</a></p>
+    </div>`;
 }
 
 function jobsContextPanel(opts: { highlight: string[]; note: string }): string {

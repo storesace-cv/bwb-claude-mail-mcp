@@ -71,6 +71,12 @@ export function layout(title: string, body: string, opts?: { flash?: string; err
     .check-list .chk { flex-direction: row; align-items: center; gap: .5rem; font-size: .875rem; font-weight: 400; color: var(--text); margin: .2rem 0; }
     .check-list .mini { margin: .25rem 0 .4rem; font-size: .75rem; padding: .3rem .7rem; }
     .badge { display: inline-block; font-size: .6875rem; padding: .15rem .5rem; border-radius: 980px; background: var(--fill-hover); }
+    .badge.ok { background: #e8f5e9; color: #1e4620; }
+    .badge.err { background: #fce8e6; color: #8c1d18; }
+    .job-step { margin: 1rem 0 1.25rem; }
+    .job-step h3 { margin: 0 0 .4rem; font-size: .95rem; }
+    .job-lines { margin: .5rem 0 0; padding-left: 1.15rem; }
+    .job-lines li { margin: .3rem 0; }
     tr.job-related td { background: var(--fill); }
   </style>
 </head>
