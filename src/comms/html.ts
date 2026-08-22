@@ -1,3 +1,5 @@
+import { tableSortScript } from "./ui/table-sort.js";
+
 function esc(s: string): string {
   return String(s)
     .replace(/&/g, "&amp;")
@@ -49,6 +51,10 @@ export function layout(title: string, body: string, opts?: { flash?: string; err
     table { width: 100%; border-collapse: collapse; font-size: .875rem; }
     th, td { text-align: left; padding: .65rem .4rem; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
     th { color: var(--muted); font-weight: 500; font-size: .75rem; }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { color: var(--text); }
+    th.sortable[aria-sort="ascending"], th.sortable[aria-sort="descending"] { color: var(--text); }
+    .sort-mark { font-family: var(--mono); font-size: .65rem; color: var(--accent-soft); margin-left: .15rem; letter-spacing: .02em; }
     .table-scroll { overflow-x: auto; }
     table.one-line th, table.one-line td { white-space: nowrap; vertical-align: middle; padding: .45rem .4rem; font-size: .75rem; }
     table.one-line th { font-size: .6875rem; }
@@ -68,6 +74,7 @@ export function layout(title: string, body: string, opts?: { flash?: string; err
     ${opts?.error ? `<div class="error">${esc(opts.error)}</div>` : ""}
     ${body}
   </div>
+  <script>${tableSortScript}</script>
 </body>
 </html>`;
 }
